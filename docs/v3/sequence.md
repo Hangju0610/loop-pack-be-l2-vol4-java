@@ -319,6 +319,10 @@ sequenceDiagram
 
 ### POST /api/v1/orders — 주문 생성
 
+> 흐름: 제품 조회 → 재고 확인(fast fail) → 주문 생성 → 재고 차감
+> 재고 확인은 명백한 재고 부족을 조기 차단하는 역할이며, 실제 원자성은 재고 차감 단계의 FOR UPDATE 락이 보장한다.
+> 재고 차감 실패 시 @Transactional로 주문 생성까지 전체 롤백된다.
+
 ```mermaid
 sequenceDiagram
     participant OrderV1Controller
@@ -336,26 +340,29 @@ sequenceDiagram
         ProductService->>ProductRepository: findById(productId)
         ProductRepository-->>ProductService: ProductModel (없으면 404)
         ProductService-->>OrderFacade: ProductModel
+    end
 
+    loop 상품별
         OrderFacade->>ProductService: getStock(productId)
         ProductService->>ProductStockRepository: findByProductId(productId)
         ProductStockRepository-->>ProductService: ProductStockModel
         ProductService-->>OrderFacade: ProductStockModel
     end
 
-    Note over OrderFacade: 전체 재고 확인 — 하나라도 부족하면 400 Bad Request
-
-    loop 상품별
-        OrderFacade->>ProductService: deductStock(productId, quantity)
-        ProductService->>ProductStockRepository: findByProductId (FOR UPDATE)
-        ProductService->>ProductService: productStock.deduct(quantity)
-        Note over ProductService: product_stock 테이블에만 락
-    end
+    Note over OrderFacade: 재고 확인 (fast fail, 락 없음) — 하나라도 부족하면 400 Bad Request
 
     OrderFacade->>OrderService: createOrder(userId, items + snapshot)
     OrderService->>OrderRepository: save(OrderModel + OrderItemModel)
     OrderRepository-->>OrderService: OrderModel
     OrderService-->>OrderFacade: OrderModel
+
+    loop 상품별
+        OrderFacade->>ProductService: deductStock(productId, quantity)
+        ProductService->>ProductStockRepository: findByProductId (FOR UPDATE)
+        ProductService->>ProductService: productStock.deduct(quantity)
+        Note over ProductService: 부족 시 예외 → @Transactional 전체 롤백
+    end
+
     OrderFacade-->>OrderV1Controller: OrderInfo
 ```
 
