@@ -19,6 +19,7 @@ erDiagram
         varchar name
         text description
         bigint price
+        bigint like_count
         datetime created_at
         datetime updated_at
         datetime deleted_at
@@ -89,6 +90,7 @@ erDiagram
 | 컬럼 | 테이블 | 설명 |
 |---|---|---|
 | `brand_id` | PRODUCT | FK 컬럼 존재, DB 레벨 FK 제약조건 없음 (ADR-005) |
+| `like_count` | PRODUCT | 좋아요 수 비정규화 컬럼, SQL 원자적 증감으로 관리 (ADR-003) |
 | `product_id` | PRODUCT_STOCK | 1:1 관계, ID만 저장, JPA 관계 없음 (ADR-006) |
 | `user_id` | LIKES, ORDERS | ID만 저장, JPA 관계 없음 |
 | `product_id` | LIKES, ORDER_ITEM | ID만 저장, JPA 관계 없음 |

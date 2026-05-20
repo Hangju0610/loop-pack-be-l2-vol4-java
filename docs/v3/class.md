@@ -24,7 +24,10 @@ classDiagram
         +String name
         +String description
         +Long price
+        +Long likeCount
         +update(name, description, price)
+        +incrementLikeCount()
+        +decrementLikeCount()
     }
 
     class ProductStockModel {

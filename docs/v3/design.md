@@ -25,6 +25,7 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 | 관계 | 방식 | 근거 |
 |---|---|---|
 | Product → Brand | `@ManyToOne` (NO_CONSTRAINT) | 상품 조회 시 브랜드명 JOIN 필요 |
+| Product.likeCount | DB 비정규화 컬럼 | SQL 원자적 증감으로 COUNT 쿼리 제거 (ADR-003) |
 | Like → User / Product | `userId`, `productId` Long | 존재 여부 확인만 필요, JPA 관계 불필요 |
 | OrderItem → Order | `@ManyToOne` | 동일 Aggregate, 생명주기 공유 |
 | OrderItem → Product | `productId` + 스냅샷 컬럼 | 주문 시점 정보 보존 (요구사항 명시) |
@@ -250,8 +251,10 @@ DELETE → userId + productId 조합 없으면 404 Not Found
 ```
 
 좋아요 수:
-- **단건 조회**: `LikeRepository.countByProductId(productId)` COUNT 쿼리 1회
-- **목록 조회**: `LikeRepository.countByProductIdIn(productIds)` GROUP BY 쿼리 1회 → `Map<productId, count>` 반환 (N+1 방지)
+- `product` 테이블의 `like_count` 컬럼으로 관리 (DB 비정규화, ADR-003)
+- **등록**: `UPDATE product SET like_count = like_count + 1 WHERE id = ?` (SQL 원자적 처리)
+- **취소**: `UPDATE product SET like_count = like_count - 1 WHERE id = ?` (SQL 원자적 처리)
+- **조회**: `ProductModel.likeCount` 필드를 그대로 반환 — 별도 COUNT 쿼리 없음
 
 ### 주문 생성
 

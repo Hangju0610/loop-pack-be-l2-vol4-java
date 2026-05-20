@@ -130,23 +130,15 @@ sequenceDiagram
     participant ProductV1Controller
     participant ProductFacade
     participant ProductService
-    participant LikeService
     participant ProductRepository
-    participant LikeRepository
 
     ProductV1Controller->>ProductFacade: getProducts(brandId, sort, page, size)
     ProductFacade->>ProductService: getProducts(brandId, sort, page, size)
     ProductService->>ProductRepository: findAll(brandId, sort, pageable)
     Note over ProductRepository: Brand JOIN으로 brandName 함께 조회
     ProductRepository-->>ProductService: Page~ProductModel~
+    Note over ProductService: ProductModel.likeCount 필드 포함 (별도 COUNT 쿼리 없음)
     ProductService-->>ProductFacade: Page~ProductModel~
-
-    ProductFacade->>LikeService: countByProductIds(productIds)
-    LikeService->>LikeRepository: countByProductIdIn(productIds)
-    Note over LikeRepository: GROUP BY product_id → Map(productId, count)
-    LikeRepository-->>LikeService: Map~Long, Long~
-    LikeService-->>ProductFacade: Map~Long, Long~
-
     ProductFacade-->>ProductV1Controller: Page~ProductInfo~
 ```
 
@@ -159,22 +151,15 @@ sequenceDiagram
     participant ProductV1Controller
     participant ProductFacade
     participant ProductService
-    participant LikeService
     participant ProductRepository
-    participant LikeRepository
 
     ProductV1Controller->>ProductFacade: getProduct(productId)
     ProductFacade->>ProductService: getProduct(productId)
     ProductService->>ProductRepository: findById(productId)
     Note over ProductRepository: Brand JOIN으로 brandName 함께 조회
     ProductRepository-->>ProductService: ProductModel (없으면 404)
+    Note over ProductService: ProductModel.likeCount 필드 포함 (별도 COUNT 쿼리 없음)
     ProductService-->>ProductFacade: ProductModel
-
-    ProductFacade->>LikeService: countByProductId(productId)
-    LikeService->>LikeRepository: countByProductId(productId)
-    LikeRepository-->>LikeService: likeCount
-    LikeService-->>ProductFacade: likeCount
-
     ProductFacade-->>ProductV1Controller: ProductInfo
 ```
 
@@ -272,6 +257,11 @@ sequenceDiagram
     LikeRepository-->>LikeService: Optional~LikeModel~
     Note over LikeService: 존재하면 409 Conflict
     LikeService->>LikeRepository: save(new LikeModel)
+
+    LikeFacade->>ProductService: incrementLikeCount(productId)
+    Note over ProductRepository: UPDATE product SET like_count = like_count + 1 WHERE id = ?
+    ProductService->>ProductRepository: incrementLikeCount(productId)
+
     LikeFacade-->>LikeV1Controller: void
 ```
 
@@ -285,13 +275,20 @@ sequenceDiagram
     participant LikeV1Controller
     participant LikeFacade
     participant LikeService
+    participant ProductService
     participant LikeRepository
+    participant ProductRepository
 
     LikeV1Controller->>LikeFacade: removeLike(userId, productId)
     LikeFacade->>LikeService: removeLike(userId, productId)
     LikeService->>LikeRepository: findByUserIdAndProductId(userId, productId)
     LikeRepository-->>LikeService: LikeModel (없으면 404)
     LikeService->>LikeService: like.delete()
+
+    LikeFacade->>ProductService: decrementLikeCount(productId)
+    Note over ProductRepository: UPDATE product SET like_count = like_count - 1 WHERE id = ?
+    ProductService->>ProductRepository: decrementLikeCount(productId)
+
     LikeFacade-->>LikeV1Controller: void
 ```
 
@@ -322,11 +319,7 @@ sequenceDiagram
     ProductRepository-->>ProductService: List~ProductModel~
     ProductService-->>LikeFacade: List~ProductModel~
 
-    LikeFacade->>LikeService: countByProductIds(productIds)
-    LikeService->>LikeRepository: countByProductIdIn(productIds)
-    Note over LikeRepository: GROUP BY product_id → Map(productId, count)
-    LikeRepository-->>LikeService: Map~Long, Long~
-    LikeService-->>LikeFacade: Map~Long, Long~
+    Note over LikeFacade: ProductModel.likeCount 필드 포함 (별도 COUNT 쿼리 없음)
 
     LikeFacade-->>LikeV1Controller: List~ProductInfo~
 ```
