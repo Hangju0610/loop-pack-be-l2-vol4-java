@@ -26,17 +26,16 @@ erDiagram
 
     PRODUCT_STOCK {
         bigint id PK
-        bigint product_id
+        bigint product_id UK
         int quantity
         datetime created_at
         datetime updated_at
         datetime deleted_at
-        "UNIQUE(product_id)" product_uk UK
     }
 
     USERS {
         bigint id PK
-        varchar user_id
+        varchar user_id UK
         varchar name
         varchar email
         varchar password
@@ -48,12 +47,11 @@ erDiagram
 
     LIKES {
         bigint id PK
-        bigint user_id
-        bigint product_id
+        bigint user_id "UK(user_id, product_id)"
+        bigint product_id "UK(user_id, product_id)"
         datetime created_at
         datetime updated_at
         datetime deleted_at
-        "UNIQUE(user_id, product_id)" user_product_uk UK
     }
 
     ORDERS {
@@ -79,6 +77,10 @@ erDiagram
 
     BRAND ||--o{ PRODUCT : "has"
     PRODUCT ||--|| PRODUCT_STOCK : "has"
+    USERS ||--o{ LIKES : "likes"
+    USERS ||--o{ ORDERS : "places"
+    PRODUCT ||--o{ LIKES : "liked by"
+    PRODUCT ||--o{ ORDER_ITEM : "referenced by"
     ORDERS ||--|{ ORDER_ITEM : "contains"
 ```
 
