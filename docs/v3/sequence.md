@@ -1,6 +1,13 @@
 # 시퀀스 다이어그램
 
-> 인증(유저 헤더 검증, 어드민 LDAP 검증) 로직은 핵심 비즈니스 흐름에 집중하기 위해 생략한다.
+> 인증(유저 헤더 검증, 어드민 LDAP 검증) 로직은 핵심 비즈니스 흐름에 집중하기 위해 흐름에서 생략한다.
+> 인증 필요 여부는 제목 배지와 다이어그램 상단 Note로 표시한다.
+
+| 배지 | 의미 |
+|---|---|
+| `🔐 User` | X-Loopers-LoginId / X-Loopers-LoginPw 헤더 필요 |
+| `🔐 Admin` | X-Loopers-Ldap: loopers.admin 헤더 필요 |
+| (없음) | 인증 불필요 |
 
 ---
 
@@ -25,10 +32,11 @@ sequenceDiagram
 
 ---
 
-### GET /api-admin/v1/brands — 브랜드 목록 조회
+### GET /api-admin/v1/brands — 브랜드 목록 조회 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over BrandAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant BrandAdminV1Controller
     participant BrandFacade
     participant BrandService
@@ -44,10 +52,11 @@ sequenceDiagram
 
 ---
 
-### POST /api-admin/v1/brands — 브랜드 등록
+### POST /api-admin/v1/brands — 브랜드 등록 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over BrandAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant BrandAdminV1Controller
     participant BrandFacade
     participant BrandService
@@ -63,10 +72,11 @@ sequenceDiagram
 
 ---
 
-### PUT /api-admin/v1/brands/{brandId} — 브랜드 수정
+### PUT /api-admin/v1/brands/{brandId} — 브랜드 수정 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over BrandAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant BrandAdminV1Controller
     participant BrandFacade
     participant BrandService
@@ -83,10 +93,11 @@ sequenceDiagram
 
 ---
 
-### DELETE /api-admin/v1/brands/{brandId} — 브랜드 삭제
+### DELETE /api-admin/v1/brands/{brandId} — 브랜드 삭제 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over BrandAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant BrandAdminV1Controller
     participant BrandFacade
     participant BrandService
@@ -170,10 +181,11 @@ sequenceDiagram
 
 ---
 
-### POST /api-admin/v1/products — 상품 등록
+### POST /api-admin/v1/products — 상품 등록 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over ProductAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant ProductAdminV1Controller
     participant ProductFacade
     participant ProductService
@@ -195,10 +207,11 @@ sequenceDiagram
 
 ---
 
-### PUT /api-admin/v1/products/{productId} — 상품 수정
+### PUT /api-admin/v1/products/{productId} — 상품 수정 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over ProductAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant ProductAdminV1Controller
     participant ProductFacade
     participant ProductService
@@ -216,10 +229,11 @@ sequenceDiagram
 
 ---
 
-### DELETE /api-admin/v1/products/{productId} — 상품 삭제
+### DELETE /api-admin/v1/products/{productId} — 상품 삭제 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over ProductAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant ProductAdminV1Controller
     participant ProductFacade
     participant ProductService
@@ -237,10 +251,11 @@ sequenceDiagram
 
 ## Like
 
-### POST /api/v1/products/{productId}/likes — 좋아요 등록
+### POST /api/v1/products/{productId}/likes — 좋아요 등록 `🔐 User`
 
 ```mermaid
 sequenceDiagram
+    Note over LikeV1Controller: 🔐 X-Loopers-LoginId / X-Loopers-LoginPw
     participant LikeV1Controller
     participant LikeFacade
     participant ProductService
@@ -263,10 +278,11 @@ sequenceDiagram
 
 ---
 
-### DELETE /api/v1/products/{productId}/likes — 좋아요 취소
+### DELETE /api/v1/products/{productId}/likes — 좋아요 취소 `🔐 User`
 
 ```mermaid
 sequenceDiagram
+    Note over LikeV1Controller: 🔐 X-Loopers-LoginId / X-Loopers-LoginPw
     participant LikeV1Controller
     participant LikeFacade
     participant LikeService
@@ -282,10 +298,11 @@ sequenceDiagram
 
 ---
 
-### GET /api/v1/users/{userId}/likes — 내가 좋아요한 상품 목록
+### GET /api/v1/users/{userId}/likes — 내가 좋아요한 상품 목록 `🔐 User`
 
 ```mermaid
 sequenceDiagram
+    Note over LikeV1Controller: 🔐 X-Loopers-LoginId / X-Loopers-LoginPw
     participant LikeV1Controller
     participant LikeFacade
     participant LikeService
@@ -293,7 +310,8 @@ sequenceDiagram
     participant LikeRepository
     participant ProductRepository
 
-    LikeV1Controller->>LikeFacade: getLikedProducts(userId)
+    LikeV1Controller->>LikeFacade: getLikedProducts(authUserId, userId)
+    Note over LikeFacade: path userId ≠ 인증된 userId 이면 403 Forbidden
     LikeFacade->>LikeService: findByUserId(userId)
     LikeService->>LikeRepository: findByUserId(userId)
     LikeRepository-->>LikeService: List~LikeModel~
@@ -317,7 +335,7 @@ sequenceDiagram
 
 ## Order
 
-### POST /api/v1/orders — 주문 생성
+### POST /api/v1/orders — 주문 생성 `🔐 User`
 
 > 흐름: 제품 조회 → 재고 확인(fast fail) → 주문 생성 → 재고 차감
 > 재고 확인은 명백한 재고 부족을 조기 차단하는 역할이며, 실제 원자성은 재고 차감 단계의 FOR UPDATE 락이 보장한다.
@@ -325,6 +343,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    Note over OrderV1Controller: 🔐 X-Loopers-LoginId / X-Loopers-LoginPw
     participant OrderV1Controller
     participant OrderFacade
     participant ProductService
@@ -373,10 +392,11 @@ sequenceDiagram
 
 ---
 
-### GET /api/v1/orders — 내 주문 목록 조회
+### GET /api/v1/orders — 내 주문 목록 조회 `🔐 User`
 
 ```mermaid
 sequenceDiagram
+    Note over OrderV1Controller: 🔐 X-Loopers-LoginId / X-Loopers-LoginPw
     participant OrderV1Controller
     participant OrderFacade
     participant OrderService
@@ -392,10 +412,11 @@ sequenceDiagram
 
 ---
 
-### GET /api/v1/orders/{orderId} — 주문 단건 조회
+### GET /api/v1/orders/{orderId} — 주문 단건 조회 `🔐 User`
 
 ```mermaid
 sequenceDiagram
+    Note over OrderV1Controller: 🔐 X-Loopers-LoginId / X-Loopers-LoginPw
     participant OrderV1Controller
     participant OrderFacade
     participant OrderService
@@ -412,10 +433,11 @@ sequenceDiagram
 
 ---
 
-### GET /api-admin/v1/orders — 주문 목록 조회 (어드민)
+### GET /api-admin/v1/orders — 주문 목록 조회 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over OrderAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant OrderAdminV1Controller
     participant OrderFacade
     participant OrderService
@@ -431,10 +453,11 @@ sequenceDiagram
 
 ---
 
-### GET /api-admin/v1/orders/{orderId} — 주문 단건 조회 (어드민)
+### GET /api-admin/v1/orders/{orderId} — 주문 단건 조회 `🔐 Admin`
 
 ```mermaid
 sequenceDiagram
+    Note over OrderAdminV1Controller: 🔐 X-Loopers-Ldap: loopers.admin
     participant OrderAdminV1Controller
     participant OrderFacade
     participant OrderService

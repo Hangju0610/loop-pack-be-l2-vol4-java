@@ -31,7 +31,6 @@ classDiagram
         +Long productId
         +Integer quantity
         +deduct(amount)
-        +validate(amount)
     }
 
     class LikeModel {

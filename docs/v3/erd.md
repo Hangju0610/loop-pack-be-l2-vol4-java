@@ -31,6 +31,7 @@ erDiagram
         datetime created_at
         datetime updated_at
         datetime deleted_at
+        "UNIQUE(product_id)" product_uk UK
     }
 
     USERS {
@@ -52,6 +53,7 @@ erDiagram
         datetime created_at
         datetime updated_at
         datetime deleted_at
+        "UNIQUE(user_id, product_id)" user_product_uk UK
     }
 
     ORDERS {
@@ -89,3 +91,5 @@ erDiagram
 | `user_id` | LIKES, ORDERS | ID만 저장, JPA 관계 없음 |
 | `product_id` | LIKES, ORDER_ITEM | ID만 저장, JPA 관계 없음 |
 | `product_name`, `product_price` | ORDER_ITEM | 주문 시점 스냅샷 (ADR-001) |
+| `UNIQUE(user_id, product_id)` | LIKES | 동일 유저의 중복 좋아요 방지 (DB 레벨 보장) |
+| `UNIQUE(product_id)` | PRODUCT_STOCK | 상품당 재고 행 1개 보장 |
