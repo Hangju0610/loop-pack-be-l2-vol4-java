@@ -220,7 +220,42 @@ public OrderInfo createOrder(...) {
 
 ---
 
-## 9. API 엔드포인트
+## 9. 연쇄 삭제 정책
+
+모든 삭제는 Soft Delete(`deleted_at = now()`)이며, 연쇄 삭제는 **Facade** 레이어에서 오케스트레이션한다. JPA Cascade는 사용하지 않는다 — Like는 `productId`(Long) ID 참조 방식이라 JPA 관계가 없고, Like와 Product는 서로 다른 Aggregate이므로 ID 참조를 유지한다.
+
+### Brand 삭제
+
+```
+BrandFacade.deleteBrand(brandId)
+  ├── BrandService.delete(brandId)
+  └── ProductService.findAllByBrand(brandId) → 각 product에 대해
+        ├── ProductService.delete(product)
+        ├── ProductInventoryService.deleteByProduct(productId)
+        └── LikeService.deleteAllByProduct(productId)
+```
+
+### Product 삭제
+
+```
+ProductFacade.deleteProduct(productId)
+  ├── ProductService.delete(productId)
+  ├── ProductInventoryService.deleteByProduct(productId)
+  └── LikeService.deleteAllByProduct(productId)
+```
+
+### Like 삭제 (좋아요 취소)
+
+```
+LikeFacade.removeLike(userId, productId)
+  └── LikeService.delete(userId, productId)   ← 단독 삭제, 연쇄 없음
+```
+
+> **like_count 처리**: 좋아요 취소(`removeLike`) 시에는 `like_count`를 차감한다. Brand/Product 삭제로 인한 Like 연쇄 삭제 시에는 `like_count` 차감을 수행하지 않는다 — 상품 자체가 삭제되므로 `like_count` 정합성 유지가 불필요하다.
+
+---
+
+## 10. API 엔드포인트
 
 ### Brand
 
@@ -299,7 +334,7 @@ public OrderInfo createOrder(...) {
 
 ---
 
-## 10. 응답 DTO 스펙
+## 11. 응답 DTO 스펙
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
@@ -541,7 +576,7 @@ public OrderInfo createOrder(...) {
 
 ---
 
-## 11. 핵심 비즈니스 로직
+## 12. 핵심 비즈니스 로직
 
 ### Brand 삭제
 
@@ -610,13 +645,13 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 12. 시퀀스 다이어그램
+## 13. 시퀀스 다이어그램
 
 → [`docs/v3/sequence.md`](./sequence.md) 참고 (전체 API 시퀀스 다이어그램)
 
 ---
 
-## 13. 에러 처리
+## 14. 에러 처리
 
 | 상황 | ErrorType | HTTP |
 |---|---|---|
@@ -632,7 +667,7 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 14. ADR 목록
+## 15. ADR 목록
 
 | 번호 | 제목 | 파일 |
 |---|---|---|
