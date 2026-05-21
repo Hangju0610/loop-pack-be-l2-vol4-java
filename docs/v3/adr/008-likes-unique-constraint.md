@@ -18,29 +18,67 @@
 
 ### 고려한 대안
 
-#### 대안 1. Hard Delete
+#### Option 1. Hard Delete
 
-좋아요 취소 시 해당 행을 DB에서 물리적으로 완전히 삭제하는 방식이다. 구현이 가장 단순하고, `UNIQUE(user_id, product_id)` 제약이 자연스럽게 유지된다. 재좋아요 시에도 기존 레코드가 없으므로 항상 신규 INSERT만 수행하면 된다.
+좋아요 취소 시 해당 행을 DB에서 물리적으로 완전히 삭제하는 방식이다.
 
-다만 좋아요 취소 이력이 DB에 남지 않는다는 단점이 있다. 현재 스코프에서는 이력이 필요 없지만, 향후 "유저가 좋아요를 눌렀다가 취소한 상품"을 분석하거나 추천 시스템에 활용하려 할 때 데이터가 없어 대응할 수 없다. 또한 프로젝트 전반의 Soft Delete 원칙에서 Like만 예외가 되므로, 일관성이 깨진다는 점도 고려했다.
+```
+좋아요 취소: DELETE FROM likes WHERE user_id = ? AND product_id = ?
+재좋아요:   INSERT INTO likes (user_id, product_id, ...)
+```
 
-#### 대안 2. Soft Delete + UNIQUE(user_id, product_id, deleted_at)
+- **장점**: 구현이 가장 단순하다. `UNIQUE(user_id, product_id)` 제약이 자연스럽게 유지되고, 재좋아요 시 항상 신규 INSERT만 수행하면 된다.
+- **단점**: 좋아요 취소 이력이 DB에 전혀 남지 않는다. 향후 "유저가 좋아요를 눌렀다가 취소한 상품" 패턴을 분석하거나 추천 시스템에 활용하려 할 때 데이터가 없어 대응할 수 없다. 또한 프로젝트 전반의 Soft Delete 원칙에서 Like만 예외가 되므로 일관성이 깨진다.
 
-취소 시 `deleted_at`을 설정하여 Soft Delete하고, UNIQUE 제약을 `(user_id, product_id, deleted_at)` 3컬럼 복합으로 변경하는 방식이다. 이력이 행 단위로 남고, 재좋아요 시 항상 신규 INSERT를 수행하므로 로직이 단순하다.
+---
 
-그러나 MySQL에서 UNIQUE 인덱스는 NULL을 서로 다른 값으로 취급한다는 특성이 있다. `deleted_at = NULL`인 행은 복수 INSERT가 허용되므로, 동시에 두 요청이 들어왔을 때 두 개의 활성 좋아요 행이 생성될 수 있다. 즉 DB 레벨에서 활성 좋아요의 중복을 막을 수 없고, 애플리케이션 검사만 남는다. 동시성 결함을 DB가 보장할 수 없다는 점에서 채택하지 않았다.
+#### Option 2. Soft Delete + UNIQUE(user_id, product_id, deleted_at)
 
-#### 대안 3. Soft Delete + Restore (채택)
+UNIQUE 제약을 `(user_id, product_id, deleted_at)` 3컬럼 복합으로 변경하고, 취소 시 `deleted_at`을 설정하여 Soft Delete하는 방식이다. 재좋아요 시 기존 soft-deleted 행이 있어도 새로운 행을 INSERT할 수 있다.
 
-취소 시 Soft Delete(`deleted_at = now()`), 재좋아요 시 기존 soft-deleted 레코드를 복구(`deleted_at = null`)하는 패턴이다. `UNIQUE(user_id, product_id)` 제약을 그대로 유지할 수 있고, DB 레벨 중복 방지도 보장된다.
+```
+(userId=1, productId=1, deleted_at=NULL)         ← 현재 활성
+(userId=1, productId=1, deleted_at='2026-05-20') ← 과거 취소 이력
+(userId=1, productId=1, deleted_at=NULL)         ← 재좋아요 (허용됨)
+```
 
-좋아요 등록 로직이 단순 INSERT에서 조회 → 분기(restore vs insert)로 복잡해지는 단점이 있다. 또한 취소 이력이 별도 행으로 남지 않고 기존 행의 상태만 변경되므로, 좋아요/취소 횟수나 시점 이력은 추적할 수 없다. 현재 스코프에서 이력 분석 요구사항이 없으므로 이 단점은 허용 가능하다고 판단했다. 단순성과 DB 무결성을 모두 확보하는 현실적인 선택이다.
+- **장점**: 좋아요/취소 이력이 행 단위로 누적 보존된다. 재좋아요 시 항상 신규 INSERT만 수행하므로 로직이 단순하다.
+- **단점**: MySQL UNIQUE 인덱스는 NULL을 서로 다른 값으로 취급하기 때문에, `deleted_at = NULL`인 행은 복수 INSERT가 허용된다. 즉 동시에 두 요청이 들어오면 두 개의 활성 좋아요 행이 생성될 수 있다. DB 레벨에서 활성 좋아요 중복을 막을 수 없어 동시성 결함을 애플리케이션에만 의존하게 된다.
 
-#### 대안 4. Generated Column + Partial Unique Index
+---
 
-MySQL 8.0+의 Generated Column(가상 컬럼)을 활용하는 방식이다. `deleted_at IS NULL`인 경우에만 `"userId_productId"` 형태의 고유 값을 갖는 가상 컬럼을 추가하고, 이 컬럼에 UNIQUE 인덱스를 건다. 취소된 행의 가상 컬럼은 NULL이 되어 UNIQUE 체크를 받지 않으므로, 이력 행이 누적되어도 DB 레벨 중복 방지가 유지된다.
+#### Option 3. Soft Delete + Restore (채택)
 
-이력 보존과 DB 레벨 보장을 모두 만족하는 가장 완전한 대안이지만, 가상 컬럼과 별도 인덱스 추가라는 DB 스키마 복잡도가 생기고, MySQL 문법에 종속된다는 단점이 있다. 현재 이력 분석 요구사항이 없는 단계에서 이 복잡도를 도입하는 것은 오버엔지니어링으로 판단했다.
+취소 시 Soft Delete(`deleted_at = now()`), 재좋아요 시 기존 soft-deleted 레코드를 복구(`deleted_at = null`)하는 패턴이다.
+
+```
+좋아요 등록 시:
+  findByUserIdAndProductId (deleted_at 포함 전체 조회)
+  → active(deleted_at=null) 존재: 409 Conflict
+  → soft-deleted 존재: restore() [deleted_at = null]
+  → 없음: save(new LikeModel)
+```
+
+- **장점**: `UNIQUE(user_id, product_id)` 제약을 그대로 유지할 수 있다. DB 레벨 중복 방지도 보장되므로 동시성 결함이 없다. Soft Delete 원칙을 지키면서 단순성과 DB 무결성을 모두 확보한다.
+- **단점**: 좋아요 등록 로직이 단순 INSERT에서 조회 → 분기(restore vs insert)로 복잡해진다. 취소 이력이 별도 행으로 남지 않고 기존 행의 상태만 변경되므로, 좋아요/취소 횟수나 시점 이력은 추적할 수 없다.
+
+---
+
+#### Option 4. Generated Column + Partial Unique Index
+
+MySQL 8.0+의 가상 컬럼(Generated Column)을 추가하고 해당 컬럼에 UNIQUE 인덱스를 거는 방식이다. `deleted_at IS NULL`인 경우에만 `"userId_productId"` 형태의 고유 값을 갖도록 설정하여, 취소된 행은 NULL이 되어 UNIQUE 체크를 받지 않는다.
+
+```sql
+ADD COLUMN unique_key VARCHAR(50)
+  GENERATED ALWAYS AS (
+    IF(deleted_at IS NULL, CONCAT(user_id, '_', product_id), NULL)
+  ) VIRTUAL;
+
+CREATE UNIQUE INDEX uq_likes_active ON likes(unique_key);
+```
+
+- **장점**: 이력 보존과 DB 레벨 중복 방지를 동시에 만족하는 가장 완전한 방식이다. 좋아요/취소를 반복해도 이력 행이 누적되며 UNIQUE 보장도 유지된다.
+- **단점**: 가상 컬럼과 별도 인덱스 추가로 DB 스키마 복잡도가 높아지고, MySQL 8.0+ 문법에 종속된다. 현재 이력 분석 요구사항이 없는 단계에서 이 복잡도를 도입하는 것은 오버엔지니어링이다.
 
 ---
 
