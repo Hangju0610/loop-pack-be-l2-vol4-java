@@ -255,7 +255,59 @@ LikeFacade.removeLike(userId, productId)
 
 ---
 
-## 10. API 엔드포인트
+## 10. Soft Delete 범위 및 조회 정책
+
+### 적용 범위
+
+모든 엔티티는 `BaseEntity`의 `deletedAt` 컬럼으로 Soft Delete를 관리한다.
+
+| 엔티티 | Soft Delete | 비고 |
+|---|---|---|
+| User | O | |
+| Brand | O | |
+| Product | O | |
+| ProductInventory | O | Product 삭제 시 연쇄 삭제 |
+| Like | O | Product/Brand 삭제 시 연쇄 삭제. 좋아요 재등록 시 Restore 패턴 적용 |
+| Order | O | |
+| OrderItem | O | Order 삭제 시 연쇄 삭제 (미구현, 향후 고려) |
+
+### 조회 필터 적용 원칙
+
+`deleted_at IS NULL` 조건은 Repository 구현체에서 **명시적으로** 포함한다. `@Where` 어노테이션이나 Hibernate Filter는 사용하지 않는다.
+
+```java
+// ProductRepositoryImpl
+public Optional<ProductModel> findById(Long id) {
+    return jpaRepository.findByIdAndDeletedAtIsNull(id);
+}
+
+public Page<ProductModel> findAll(Pageable pageable) {
+    return jpaRepository.findAllByDeletedAtIsNull(pageable);
+}
+```
+
+`@Where`나 Hibernate Filter는 자동 적용되어 편리하지만, 의도치 않게 삭제된 데이터가 조회되거나 누락되는 버그를 발견하기 어렵다. 명시적 조건으로 제어 범위를 명확히 한다.
+
+### Like 예외 — Restore 패턴
+
+좋아요 재등록 시에는 soft delete된 레코드를 포함한 전체 조회가 필요하다.
+
+```java
+// LikeRepositoryImpl
+// 일반 조회 — active only
+public Optional<LikeModel> findActive(Long userId, Long productId) {
+    return jpaRepository.findByUserIdAndProductIdAndDeletedAtIsNull(userId, productId);
+}
+
+// Restore용 — deleted_at 포함 전체 조회
+public Optional<LikeModel> findAny(Long userId, Long productId) {
+    return jpaRepository.findByUserIdAndProductId(userId, productId);
+}
+```
+
+---
+
+## 11. API 엔드포인트
 
 ### Brand
 
@@ -334,7 +386,7 @@ LikeFacade.removeLike(userId, productId)
 
 ---
 
-## 11. 응답 DTO 스펙
+## 12. 응답 DTO 스펙
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
@@ -576,7 +628,7 @@ LikeFacade.removeLike(userId, productId)
 
 ---
 
-## 12. 핵심 비즈니스 로직
+## 13. 핵심 비즈니스 로직
 
 ### Brand 삭제
 
@@ -645,13 +697,13 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 13. 시퀀스 다이어그램
+## 14. 시퀀스 다이어그램
 
 → [`docs/v3/sequence.md`](./sequence.md) 참고 (전체 API 시퀀스 다이어그램)
 
 ---
 
-## 14. 에러 처리
+## 15. 에러 처리
 
 | 상황 | ErrorType | HTTP |
 |---|---|---|
@@ -667,7 +719,7 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 15. ADR 목록
+## 16. ADR 목록
 
 | 번호 | 제목 | 파일 |
 |---|---|---|
