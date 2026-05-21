@@ -18,7 +18,53 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 
 ---
 
-## 2. 도메인 모델
+## 2. 유저 플로우
+
+### Customer
+
+```
+회원가입 (POST /api/v1/users)
+  └── 이후 모든 요청에 X-Loopers-LoginId / X-Loopers-LoginPw 헤더 포함
+        ├── 내 정보 조회 (GET /api/v1/users/me)
+        ├── 비밀번호 수정 (PUT /api/v1/users/me/password)
+        ├── 상품 탐색
+        │     ├── 브랜드 단건 조회 (GET /api/v1/brands/{brandId})
+        │     ├── 상품 목록 조회 (GET /api/v1/products?sort=latest)
+        │     └── 상품 단건 조회 (GET /api/v1/products/{productId})
+        ├── 좋아요
+        │     ├── 좋아요 등록 (POST /api/v1/products/{productId}/likes)
+        │     ├── 좋아요 취소 (DELETE /api/v1/products/{productId}/likes)
+        │     └── 내 좋아요 목록 (GET /api/v1/users/{userId}/likes)
+        └── 주문
+              ├── 주문 생성 (POST /api/v1/orders)
+              ├── 내 주문 목록 (GET /api/v1/orders?startAt=&endAt=)
+              └── 주문 단건 조회 (GET /api/v1/orders/{orderId})
+```
+
+### Admin
+
+```
+모든 요청에 X-Loopers-Ldap: loopers.admin 헤더 포함
+  ├── 브랜드 관리
+  │     ├── 목록 조회 (GET /api-admin/v1/brands)
+  │     ├── 단건 조회 (GET /api-admin/v1/brands/{brandId})
+  │     ├── 등록 (POST /api-admin/v1/brands)
+  │     ├── 수정 (PUT /api-admin/v1/brands/{brandId})
+  │     └── 삭제 (DELETE /api-admin/v1/brands/{brandId})
+  ├── 상품 관리
+  │     ├── 목록 조회 (GET /api-admin/v1/products)
+  │     ├── 단건 조회 (GET /api-admin/v1/products/{productId})
+  │     ├── 등록 (POST /api-admin/v1/products)
+  │     ├── 수정 (PUT /api-admin/v1/products/{productId})
+  │     └── 삭제 (DELETE /api-admin/v1/products/{productId})
+  └── 주문 관리
+        ├── 목록 조회 (GET /api-admin/v1/orders)
+        └── 단건 조회 (GET /api-admin/v1/orders/{orderId})
+```
+
+---
+
+## 3. 도메인 모델
 
 ### 핵심 설계 결정 요약
 
@@ -36,19 +82,19 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 
 ---
 
-## 3. ERD
+## 4. ERD
 
 → [`docs/v3/erd.md`](./erd.md) 참고
 
 ---
 
-## 4. 클래스 다이어그램
+## 5. 클래스 다이어그램
 
 → [`docs/v3/class.md`](./class.md) 참고
 
 ---
 
-## 5. 레이어 구조 (도메인별)
+## 6. 레이어 구조 (도메인별)
 
 기존 패턴(`interfaces → application → domain → infrastructure`)을 동일하게 따른다.
 
@@ -93,7 +139,7 @@ infrastructure/
 
 ---
 
-## 6. API 엔드포인트
+## 7. API 엔드포인트
 
 ### Brand
 
@@ -172,7 +218,7 @@ infrastructure/
 
 ---
 
-## 7. 응답 DTO 스펙
+## 8. 응답 DTO 스펙
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
@@ -414,7 +460,7 @@ infrastructure/
 
 ---
 
-## 8. 핵심 비즈니스 로직
+## 9. 핵심 비즈니스 로직
 
 ### Brand 삭제
 
@@ -483,13 +529,13 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 9. 시퀀스 다이어그램
+## 10. 시퀀스 다이어그램
 
 → [`docs/v3/sequence.md`](./sequence.md) 참고 (전체 API 시퀀스 다이어그램)
 
 ---
 
-## 10. 에러 처리
+## 11. 에러 처리
 
 | 상황 | ErrorType | HTTP |
 |---|---|---|
@@ -505,7 +551,7 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 11. ADR 목록
+## 12. ADR 목록
 
 | 번호 | 제목 | 파일 |
 |---|---|---|
