@@ -66,7 +66,8 @@
 
 ### 좋아요 등록 / 좋아요 취소
 - **등록**: `addLike` — 유저가 상품에 좋아요를 누르는 행위.
-- **취소**: `removeLike` — 유저가 등록한 좋아요를 철회하는 행위.
+  - soft-deleted 레코드가 존재하면 `restore()` (deleted_at = null), 없으면 신규 INSERT.
+- **취소**: `removeLike` — 유저가 등록한 좋아요를 철회하는 행위. Soft Delete 적용.
 - **주의**: `createLike` / `deleteLike` / `cancelLike` 사용 금지. `add` / `remove` 로 통일.
 
 ### 재고 차감 (Deduct Inventory)
@@ -102,7 +103,8 @@
 - **코드 표현**: `BaseEntity.delete()` 호출 → `deletedAt = now()`.
 - **조회 필터**: 모든 조회 쿼리는 `deleted_at IS NULL` 조건을 적용한다.
 - **적용 대상**: `Brand`, `Product`, `ProductInventory`, `Order`, `OrderItem`.
-- **좋아요 예외**: `Like` 는 Hard Delete 적용 — Soft Delete 시 UNIQUE 제약(`user_id`, `product_id`)과 충돌하여 재등록 불가 문제 발생.
+- **좋아요**: `Like` 는 Soft Delete + Restore 패턴 적용.
+  취소 시 `deleted_at` 설정, 재등록 시 기존 레코드를 `restore()` 하여 UNIQUE 제약 유지 (ADR-008).
 
 ### 연쇄 삭제 (Cascade Soft Delete)
 - **정의**: 브랜드 삭제 시 해당 브랜드의 모든 상품도 함께 Soft Delete 처리.

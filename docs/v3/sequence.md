@@ -318,9 +318,11 @@ sequenceDiagram
 
     LikeFacade->>LikeService: addLike(userId, productId)
     LikeService->>LikeRepository: findByUserIdAndProductId(userId, productId)
+    Note over LikeRepository: deleted_at 포함 전체 조회
     LikeRepository-->>LikeService: Optional~LikeModel~
-    Note over LikeService: 존재하면 409 Conflict
-    LikeService->>LikeRepository: save(new LikeModel)
+    Note over LikeService: active(deleted_at=null) 존재 → 409 Conflict
+    Note over LikeService: soft-deleted 존재 → restore() [deleted_at=null]
+    Note over LikeService: 없음 → save(new LikeModel)
 
     LikeFacade->>ProductService: incrementLikeCount(productId)
     Note over ProductRepository: UPDATE product SET like_count = like_count + 1 WHERE id = ?

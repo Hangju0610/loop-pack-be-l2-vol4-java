@@ -423,8 +423,14 @@ BrandFacade.deleteBrand(brandId)
 ### 좋아요 등록 / 취소
 
 ```
-POST  → userId + productId 조합 중복 확인 → 존재하면 409 Conflict
-DELETE → userId + productId 조합 없으면 404 Not Found
+POST  → findByUserIdAndProductId (deleted_at 포함 전체 조회)
+        → active 존재: 409 Conflict
+        → soft-deleted 존재: restore() [deleted_at = null]
+        → 없음: save(new LikeModel)
+
+DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
+        → 없으면 404 Not Found
+        → 존재: like.delete() [deleted_at = now()]
 ```
 
 좋아요 수:
