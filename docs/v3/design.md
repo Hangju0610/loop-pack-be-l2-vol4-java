@@ -119,8 +119,19 @@ infrastructure/
 
 | Method | URI | 설명 |
 |---|---|---|
-| GET | `/api/v1/products?brandId=&sort=latest&page=0&size=20` | 상품 목록 |
+| GET | `/api/v1/products?brandId=&sort=latest&page=0&size=20` | 상품 목록 (sort 생략 시 latest 기본값) |
 | GET | `/api/v1/products/{productId}` | 상품 단건 조회 |
+
+> **sort 파라미터 명세**
+> | 값 | 정렬 기준 |
+> |---|---|
+> | `latest` (기본값) | 등록일시 내림차순 |
+> | `price_asc` | 가격 오름차순 |
+> | `price_desc` | 가격 내림차순 |
+> | `like_asc` | 좋아요 수 오름차순 |
+> | `like_desc` | 좋아요 수 내림차순 |
+>
+> sort 파라미터가 없거나 알 수 없는 값인 경우 `latest`로 대체한다.
 
 **Admin**
 
@@ -415,9 +426,21 @@ BrandFacade.deleteBrand(brandId)
   └── ProductService.deleteAllByBrand(brandId) → 연관 상품 각각 product.delete()
 ```
 
+### 상품 삭제
+
+`ProductFacade`가 오케스트레이션을 담당한다. 상품이 soft delete될 때 연관된 재고 행도 함께 soft delete한다.
+
+```
+ProductFacade.deleteProduct(productId)
+  ├── ProductService.delete(productId)          → product.delete()
+  └── ProductInventoryService.deleteByProduct(productId) → inventory.delete()
+```
+
+> 상품이 soft delete되면 ProductInventory도 동일하게 soft delete한다. 이후 재고 조회 시 `deleted_at IS NULL` 필터로 제외된다.
+
 ### 상품 등록 / 수정
 
-- 등록: `brandId`로 Brand 존재 여부 검증 후 ProductModel 생성
+- 등록: `brandId`로 Brand 존재 여부 검증 후 ProductModel 생성, ProductInventoryModel도 함께 생성
 - 수정: 브랜드 변경 불가 — `brand` 필드는 update 메서드에서 제외
 
 ### 좋아요 등록 / 취소
@@ -475,6 +498,8 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 | 재고 부족 | `BAD_REQUEST` | 400 |
 | 브랜드 변경 시도 (상품 수정) | `BAD_REQUEST` | 400 |
 | 어드민 헤더 불일치 | `FORBIDDEN` | 403 |
+| 타인의 좋아요 목록 조회 시도 | `FORBIDDEN` | 403 |
+| 알 수 없는 sort 파라미터 | — | `latest`로 대체 (에러 아님) |
 
 > `FORBIDDEN` ErrorType 추가 필요
 

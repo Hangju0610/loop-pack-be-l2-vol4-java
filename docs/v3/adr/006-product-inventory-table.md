@@ -47,6 +47,20 @@ private ProductInventoryModel inventory;
 
 - 쓰기(재고 차감)는 반드시 `ProductInventoryRepository`를 통해 `FOR UPDATE` 락과 함께 처리한다. `ProductModel.inventory`를 통한 쓰기는 금지한다.
 
+## 추가 결정: 상품 삭제 시 연쇄 Soft Delete
+
+상품(`product`)이 soft delete될 때, 연관된 `product_inventory` 행도 함께 soft delete한다.
+
+```
+ProductFacade.deleteProduct(productId)
+  ├── ProductService.delete(productId)                       → product.delete()
+  └── ProductInventoryService.deleteByProduct(productId)    → inventory.delete()
+```
+
+- `product_inventory`에는 별도 삭제 API가 없다. 재고의 생명주기는 항상 상품에 종속된다.
+- 이후 재고 조회 시 `deleted_at IS NULL` 필터가 자동 적용되므로, soft delete된 재고는 조회 대상에서 제외된다.
+- Brand 삭제 시에도 연관 상품이 soft delete되므로, 연쇄적으로 `product_inventory`까지 soft delete가 전파된다.
+
 ## 추가 결정: UNIQUE 제약 및 deduct() 설계
 
 **`UNIQUE(product_id)`**: `product_inventory` 테이블에 `product_id` UNIQUE 제약을 추가한다. 상품당 재고 행이 2개 이상 생성되는 것을 DB 레벨에서 원천 차단한다.
