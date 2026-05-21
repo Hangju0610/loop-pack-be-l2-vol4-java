@@ -596,5 +596,5 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 | ADR-012 | 트랜잭션 경계 원칙 | `adr/012-transaction-boundary.md` |
 | ADR-013 | 연쇄 삭제 정책 — Facade 오케스트레이션 + Like 연쇄 Soft Delete | `adr/013-cascade-soft-delete.md` |
 | ADR-014 | 재고 차감 락 순서 정렬 — IN FOR UPDATE + Service 정렬 | `adr/014-batch-query-and-lock-ordering.md` |
-| ADR-015 | OrderStatus — COMPLETED 단일 상태 | `adr/015-order-status-single-value.md` |
+| ADR-015 | orderStatus (보류) | `adr/015-order-status-single-value.md` |
 | ADR-016 | Admin 인증 — 테이블 미생성, 헤더 고정값 검증 | `adr/016-admin-auth-header.md` |

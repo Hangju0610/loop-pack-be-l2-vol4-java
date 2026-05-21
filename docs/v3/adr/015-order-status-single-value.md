@@ -1,7 +1,9 @@
-# ADR-015: OrderStatus — COMPLETED 단일 상태
+# ADR-015: orderStatus
 
 - 날짜: 2026-05-22
-- 상태: 승인됨
+- 상태: 보류
+
+> 현재 요구사항에 결제 흐름이 없으므로 OrderStatus 확정을 차후 주차로 미룬다. 임시로 `COMPLETED` 단일 값을 사용한다.
 
 ## 결정
 
