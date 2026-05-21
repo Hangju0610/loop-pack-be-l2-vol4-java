@@ -350,20 +350,15 @@ infrastructure/
   "createdAt": "2026-05-20T10:00:00"
 }
 
-// GET /api/v1/orders  →  200
-{
-  "content": [
-    {
-      "orderId": 10,
-      "status": "COMPLETED",
-      "totalAmount": 380000,
-      "createdAt": "2026-05-20T10:00:00"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 3
-}
+// GET /api/v1/orders?startAt=2026-05-01&endAt=2026-05-31  →  200
+[
+  {
+    "orderId": 10,
+    "status": "COMPLETED",
+    "totalAmount": 380000,
+    "createdAt": "2026-05-20T10:00:00"
+  }
+]
 
 // GET /api/v1/orders/{orderId}  →  200
 {
