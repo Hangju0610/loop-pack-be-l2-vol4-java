@@ -429,10 +429,10 @@ public Optional<LikeModel> findAny(Long userId, Long productId) {
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
-> - 생성 (POST): `201 Created`
-> - 수정 (PUT): `200 OK`
-> - 삭제 (DELETE): `204 No Content`
-> - 좋아요 등록 (POST): `204 No Content` (body 없음)
+> - 생성 (POST): `201 Created`, body: `{ "id": <생성된 id> }`
+> - 수정 (PUT): `204 No Content` (body 없음)
+> - 삭제 (DELETE): `204 No Content` (body 없음)
+> - 좋아요 등록/취소 (POST/DELETE): `204 No Content` (body 없음)
 
 ---
 
@@ -468,89 +468,22 @@ public Optional<LikeModel> findAny(Long userId, Long productId) {
 
 ### Product
 
-```json
-// GET /api/v1/products  →  200
-{
-  "content": [
-    {
-      "id": 1,
-      "brandId": 2,
-      "brandName": "Nike",
-      "name": "에어맥스",
-      "price": 150000,
-      "likeCount": 42
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 100
-}
+| 필드 | Customer PLP | Customer PDP | Admin PLP | Admin PDP |
+|---|:---:|:---:|:---:|:---:|
+| id | ✅ | ✅ | ✅ | ✅ |
+| brandId | ✅ | ✅ | ✅ | ✅ |
+| brandName | ✅ | ✅ | ✅ | ✅ |
+| name | ✅ | ✅ | ✅ | ✅ |
+| price | ✅ | ✅ | ✅ | ✅ |
+| likeCount | ✅ | ✅ | ✅ | ✅ |
+| quantity | ❌ | ✅ | ✅ | ✅ |
+| description | ❌ | ✅ | ❌ | ✅ |
+| createdAt | ❌ | ❌ | ✅ | ✅ |
+| updatedAt | ❌ | ❌ | ✅ | ✅ |
 
-// GET /api/v1/products/{productId}  →  200
-{
-  "id": 1,
-  "brandId": 2,
-  "brandName": "Nike",
-  "name": "에어맥스",
-  "description": "편안한 러닝화",
-  "price": 150000,
-  "quantity": 10,
-  "likeCount": 42
-}
-
-// GET /api-admin/v1/products  →  200
-{
-  "content": [
-    {
-      "id": 1,
-      "brandId": 2,
-      "brandName": "Nike",
-      "name": "에어맥스",
-      "price": 150000,
-      "quantity": 10,
-      "likeCount": 42,
-      "createdAt": "2026-05-20T10:00:00"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 100
-}
-
-// GET /api-admin/v1/products/{productId}  →  200
-{
-  "id": 1,
-  "brandId": 2,
-  "brandName": "Nike",
-  "name": "에어맥스",
-  "description": "편안한 러닝화",
-  "price": 150000,
-  "quantity": 10,
-  "likeCount": 42,
-  "createdAt": "2026-05-20T10:00:00"
-}
-
-// POST /api-admin/v1/products  →  201
-{
-  "id": 1,
-  "brandId": 2,
-  "brandName": "Nike",
-  "name": "에어맥스",
-  "description": "편안한 러닝화",
-  "price": 150000,
-  "quantity": 10,
-  "likeCount": 0,
-  "createdAt": "2026-05-20T10:00:00"
-}
-
-// PUT /api-admin/v1/products/{productId}  →  200  (POST와 동일 구조)
-// DELETE /api-admin/v1/products/{productId}  →  204  (body 없음)
-```
-
-> **Customer vs Admin 응답 차이**
-> - Customer 목록: `description`, `quantity`, `createdAt` 제외 (탐색용 요약 정보)
-> - Customer 단건: `createdAt` 제외
-> - Admin: 전체 필드 제공
+> PLP(Product Listing Page): 탐색 목적 — 구매 결정에 필요한 핵심 정보만 제공
+> PDP(Product Detail Page): 상세 정보 — 재고·설명 포함 전체 정보 제공
+> Admin PLP: 재고·수정 이력(updatedAt) 포함 — 운영 관리 목적
 
 ---
 
