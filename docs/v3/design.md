@@ -189,7 +189,38 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
 ---
 
-## 8. API 엔드포인트
+## 8. 트랜잭션 경계 원칙
+
+| 레이어 | 규칙 |
+|---|---|
+| Controller | `@Transactional` 미적용 |
+| Facade | 기본적으로 미적용. 단, 여러 Service 쓰기 작업이 원자성을 요구하는 경우에 한해 적용 |
+| Service (조회) | `@Transactional(readOnly = true)` |
+| Service (쓰기) | `@Transactional` |
+
+트랜잭션 경계는 원칙적으로 **Service** 레이어에서 시작한다. Facade는 Service에 위임하며 트랜잭션에 관여하지 않는다.
+
+### 예외 — OrderFacade.createOrder()
+
+주문 생성과 재고 차감은 반드시 하나의 트랜잭션으로 묶여야 한다. 두 작업은 서로 다른 Service(`OrderService`, `ProductInventoryService`)가 담당하므로, Facade에서 `@Transactional`로 경계를 감싼다.
+
+```java
+// OrderFacade
+@Transactional
+public OrderInfo createOrder(...) {
+    ProductModel product = productService.getProduct(...); // ← 트랜잭션 참여 (readOnly 전파)
+    // 재고 fast fail 검증
+    OrderModel order = orderService.createOrder(product, ...); // ← 주문 생성
+    inventoryService.deductInventory(product.getId(), quantity); // ← 재고 차감 (FOR UPDATE)
+    return OrderInfo.from(order);
+}
+```
+
+> Service 간 직접 의존성 주입은 DDD 원칙에 어긋나므로 금지한다. 여러 Service를 조합해야 하는 원자적 작업은 Facade가 트랜잭션 경계를 갖는 방식으로 처리한다.
+
+---
+
+## 9. API 엔드포인트
 
 ### Brand
 
@@ -268,7 +299,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
 ---
 
-## 9. 응답 DTO 스펙
+## 10. 응답 DTO 스펙
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
@@ -510,7 +541,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
 ---
 
-## 10. 핵심 비즈니스 로직
+## 11. 핵심 비즈니스 로직
 
 ### Brand 삭제
 
@@ -579,13 +610,13 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 11. 시퀀스 다이어그램
+## 12. 시퀀스 다이어그램
 
 → [`docs/v3/sequence.md`](./sequence.md) 참고 (전체 API 시퀀스 다이어그램)
 
 ---
 
-## 12. 에러 처리
+## 13. 에러 처리
 
 | 상황 | ErrorType | HTTP |
 |---|---|---|
@@ -601,7 +632,7 @@ DELETE → findByUserIdAndProductId (deleted_at IS NULL, active만)
 
 ---
 
-## 13. ADR 목록
+## 14. ADR 목록
 
 | 번호 | 제목 | 파일 |
 |---|---|---|
