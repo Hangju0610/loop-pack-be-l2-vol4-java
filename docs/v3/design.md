@@ -425,7 +425,7 @@ public Optional<LikeModel> findAny(Long userId, Long productId) {
 
 ---
 
-## 13. 응답 DTO 스펙
+## 13. 제공 정보 정책
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
@@ -438,31 +438,15 @@ public Optional<LikeModel> findAny(Long userId, Long productId) {
 
 ### Brand
 
-```json
-// GET /api/v1/brands/{brandId}  →  200
-{ "id": 1, "name": "Nike", "description": "나이키입니다" }
+> Customer는 브랜드 단건 조회(`PDP`)만 제공. 목록 조회 없음.
 
-// GET /api-admin/v1/brands  →  200
-{
-  "content": [
-    { "id": 1, "name": "Nike", "description": "나이키입니다", "createdAt": "2026-05-20T10:00:00" }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 1
-}
-
-// GET /api-admin/v1/brands/{brandId}  →  200
-{ "id": 1, "name": "Nike", "description": "나이키입니다", "createdAt": "2026-05-20T10:00:00" }
-
-// POST /api-admin/v1/brands  →  201
-{ "id": 1, "name": "Nike", "description": "나이키입니다", "createdAt": "2026-05-20T10:00:00" }
-
-// PUT /api-admin/v1/brands/{brandId}  →  200
-{ "id": 1, "name": "Nike", "description": "나이키입니다", "createdAt": "2026-05-20T10:00:00" }
-
-// DELETE /api-admin/v1/brands/{brandId}  →  204  (body 없음)
-```
+| 필드 | Customer PDP | Admin PLP | Admin PDP |
+|---|:---:|:---:|:---:|
+| id | ✅ | ✅ | ✅ |
+| name | ✅ | ✅ | ✅ |
+| description | ✅ | ✅ | ✅ |
+| createdAt | ❌ | ✅ | ✅ |
+| updatedAt | ❌ | ✅ | ✅ |
 
 ---
 
@@ -484,119 +468,6 @@ public Optional<LikeModel> findAny(Long userId, Long productId) {
 > PLP(Product Listing Page): 탐색 목적 — 구매 결정에 필요한 핵심 정보만 제공
 > PDP(Product Detail Page): 상세 정보 — 재고·설명 포함 전체 정보 제공
 > Admin PLP: 재고·수정 이력(updatedAt) 포함 — 운영 관리 목적
-
----
-
-### Like
-
-```json
-// POST /api/v1/products/{productId}/likes  →  204  (body 없음)
-// DELETE /api/v1/products/{productId}/likes  →  204  (body 없음)
-
-// GET /api/v1/users/{userId}/likes  →  200
-{
-  "content": [
-    {
-      "id": 1,
-      "brandId": 2,
-      "brandName": "Nike",
-      "name": "에어맥스",
-      "price": 150000,
-      "likeCount": 42
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 5
-}
-```
-
----
-
-### Order
-
-```json
-// POST /api/v1/orders 요청
-{
-  "items": [
-    { "productId": 1, "quantity": 2 },
-    { "productId": 3, "quantity": 1 }
-  ]
-}
-
-// POST /api/v1/orders  →  201
-{
-  "orderId": 10,
-  "status": "COMPLETED",
-  "items": [
-    { "productId": 1, "productName": "에어맥스", "productPrice": 150000, "quantity": 2 },
-    { "productId": 3, "productName": "런닝화", "productPrice": 80000, "quantity": 1 }
-  ],
-  "totalAmount": 380000,
-  "createdAt": "2026-05-20T10:00:00"
-}
-
-// GET /api/v1/orders?startAt=2026-05-01&endAt=2026-05-31&page=0&size=20  →  200
-{
-  "content": [
-    {
-      "orderId": 10,
-      "status": "COMPLETED",
-      "totalAmount": 380000,
-      "createdAt": "2026-05-20T10:00:00"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 3
-}
-
-// GET /api/v1/orders/{orderId}  →  200
-{
-  "orderId": 10,
-  "status": "COMPLETED",
-  "items": [
-    { "productId": 1, "productName": "에어맥스", "productPrice": 150000, "quantity": 2 },
-    { "productId": 3, "productName": "런닝화", "productPrice": 80000, "quantity": 1 }
-  ],
-  "totalAmount": 380000,
-  "createdAt": "2026-05-20T10:00:00"
-}
-
-// GET /api-admin/v1/orders  →  200
-{
-  "content": [
-    {
-      "orderId": 10,
-      "userId": 5,
-      "status": "COMPLETED",
-      "totalAmount": 380000,
-      "createdAt": "2026-05-20T10:00:00"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 50
-}
-
-// GET /api-admin/v1/orders/{orderId}  →  200
-{
-  "orderId": 10,
-  "userId": 5,
-  "status": "COMPLETED",
-  "items": [
-    { "productId": 1, "productName": "에어맥스", "productPrice": 150000, "quantity": 2 },
-    { "productId": 3, "productName": "런닝화", "productPrice": 80000, "quantity": 1 }
-  ],
-  "totalAmount": 380000,
-  "createdAt": "2026-05-20T10:00:00"
-}
-```
-
-> **Customer vs Admin 주문 응답 차이**
-> - Customer: `userId` 미노출 (자신의 주문만 조회 가능)
-> - Admin 목록: `userId` 포함 (전체 주문 관리)
-> - Admin 단건: `userId` 포함 + 전체 items
 
 ---
 
