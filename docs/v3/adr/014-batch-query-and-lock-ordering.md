@@ -1,23 +1,13 @@
-# ADR-014: 배치 IN 쿼리 + 재고 차감 락 순서 정렬
+# ADR-014: 재고 차감 락 순서 정렬 — IN FOR UPDATE + Service 정렬
 
 - 날짜: 2026-05-22
 - 상태: 승인됨
 
 ## 결정
 
-여러 상품을 대상으로 하는 조회·삭제·재고 차감 작업은 루프 대신 **배치 IN 쿼리**로 처리한다. 재고 차감 시에는 Service 레이어에서 `productId` 오름차순 정렬 후 `IN (...) FOR UPDATE`를 실행하여 데드락을 방어한다.
-
-| 작업 | 방식 |
-|---|---|
-| 주문 생성 - 상품 조회 | `WHERE id IN (productIds)` 1회 |
-| 브랜드 삭제 - 연쇄 삭제 | `WHERE product_id IN (productIds)` 일괄 soft delete |
-| 주문 생성 - 재고 차감 | productId 오름차순 정렬 후 `WHERE product_id IN (...) FOR UPDATE` |
+재고 차감 시 데드락을 방지하기 위해 Service 레이어에서 `productId` 오름차순 정렬 후 `IN (...) FOR UPDATE`를 실행한다.
 
 ## 근거
-
-### 배치 IN 쿼리 채택 이유
-
-루프 방식은 상품 N개에 대해 DB 쿼리를 N번 발생시킨다. N+1 문제와 동일한 구조로, 상품 수가 늘어날수록 불필요한 DB round-trip이 증가한다. `IN (...)` 쿼리로 1번에 처리하면 동일한 결과를 얻으면서 성능을 개선할 수 있다.
 
 ### 재고 차감 — IN FOR UPDATE + Service 정렬
 
