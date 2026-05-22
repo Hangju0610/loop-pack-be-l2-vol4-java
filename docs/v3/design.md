@@ -354,6 +354,14 @@ stateDiagram-v2
   - 없으면 404 Not Found
   - 존재 → `like.delete()` [deleted_at = now()]
 
+> **왜 Soft Delete + Restore인가?** ([ADR-008](./adr/008-likes-unique-constraint.md))
+> `(user_id, product_id)` 복합 UNIQUE 제약을 유지하는 한, 취소 후 재좋아요를 새 INSERT로 처리하면 UNIQUE 위반이 발생한다.
+> 기존 레코드를 `restore()`로 재활성화하면 UNIQUE 제약을 유지하면서 재좋아요를 처리할 수 있다.
+> DB UNIQUE 제약은 동시 요청 시 최후 방어선 역할도 한다.
+
+> **좋아요 목록 소유권** ([ADR-009](./adr/009-likes-ownership-check.md))
+> `GET /api/v1/users/{userId}/likes`는 path의 `userId`와 인증된 userId가 다르면 DB 조회 없이 즉시 `403 Forbidden`을 반환한다.
+
 좋아요 수:
 - `product` 테이블의 `like_count` 컬럼으로 관리 (DB 비정규화, [ADR-003](./adr/003-like-count-query.md))
 - **등록**: `UPDATE product SET like_count = like_count + 1 WHERE id = ?` (SQL 원자적 처리)
@@ -378,7 +386,22 @@ flowchart TD
 
 > - 2번 fast fail은 명백한 재고 부족을 주문 INSERT 이전에 조기 차단하는 역할
 > - 실제 동시성 보장은 FOR UPDATE 락이 담당
-> - product_inventory 테이블에만 락이 걸리므로 상품 조회 성능에 영향 없음 ([ADR-006](./adr/006-product-inventory-table.md) 참고)
+> - product_inventory 테이블에만 락이 걸리므로 상품 조회 성능에 영향 없음 ([ADR-006](./adr/006-product-inventory-table.md))
+
+> **왜 이 순서인가?** ([ADR-007](./adr/007-order-creation-flow.md))
+> 주문 INSERT를 재고 차감보다 먼저 수행하면, 재고 차감 실패 시 `@Transactional` 롤백으로 주문까지 함께 취소된다.
+> 반대로 재고를 먼저 차감하면 주문 INSERT 실패 시 재고만 줄어드는 불일치가 발생한다.
+
+> **왜 OrderItem에 상품명·가격을 복사하는가?** ([ADR-001](./adr/001-order-item-snapshot.md))
+> 주문 이후 상품 가격이 변경되거나 상품이 soft delete되어도 주문 이력은 당시 정보를 보존해야 한다.
+> `Product`를 `@ManyToOne`으로 참조하면 상품 삭제 시 주문 이력도 함께 깨진다.
+
+> **왜 재고 차감 시 productId 오름차순으로 정렬하는가?** ([ADR-014](./adr/014-batch-query-and-lock-ordering.md))
+> 여러 트랜잭션이 서로 다른 순서로 락을 획득하면 데드락이 발생할 수 있다.
+> `WHERE product_id IN (...) ORDER BY product_id FOR UPDATE`로 락 획득 순서를 일관되게 유지한다.
+
+> **주문 상태** ([ADR-015](./adr/015-order-status-single-value.md))
+> 현재는 결제 기능이 없으므로 주문 생성 즉시 `COMPLETED` 단일 상태로 처리한다. 결제 기능 추가 시 상태 확장 예정.
 
 ### 어드민 인증
 
