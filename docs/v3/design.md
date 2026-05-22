@@ -27,7 +27,7 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 | 관계 | 방식 | 근거 |
 |---|---|---|
 | Product → Brand | `@ManyToOne` (NO_CONSTRAINT) | 상품 조회 시 브랜드명 JOIN 필요 |
-| Product.likeCount | DB 비정규화 컬럼 | SQL 원자적 증감으로 COUNT 쿼리 제거 (ADR-003) |
+| Product.likeCount | DB 비정규화 컬럼 | SQL 원자적 증감으로 COUNT 쿼리 제거 ([ADR-003](./adr/003-like-count-query.md)) |
 | Product.quantity | PRODUCT_INVENTORY JOIN 필드 | 상품 조회 시 재고 포함 반환 — 별도 재고 조회 불필요, 품절 여부 노출 |
 | Like → User / Product | `userId`, `productId` Long | 존재 여부 확인만 필요, JPA 관계 불필요 |
 | OrderItem → Order | `@ManyToOne` | 동일 Aggregate, 생명주기 공유 |
@@ -248,7 +248,7 @@ infrastructure/
 | price | ✅ |
 | likeCount | ✅ |
 
-> 삭제된 상품의 Like는 연쇄 Soft Delete로 제거되므로 별도 필터링 불필요 (ADR-013)
+> 삭제된 상품의 Like는 연쇄 Soft Delete로 제거되므로 별도 필터링 불필요 ([ADR-013](./adr/013-cascade-soft-delete.md))
 
 ---
 
@@ -411,7 +411,7 @@ stateDiagram-v2
   - 존재 → `like.delete()` [deleted_at = now()]
 
 좋아요 수:
-- `product` 테이블의 `like_count` 컬럼으로 관리 (DB 비정규화, ADR-003)
+- `product` 테이블의 `like_count` 컬럼으로 관리 (DB 비정규화, [ADR-003](./adr/003-like-count-query.md))
 - **등록**: `UPDATE product SET like_count = like_count + 1 WHERE id = ?` (SQL 원자적 처리)
 - **취소**: `UPDATE product SET like_count = like_count - 1 WHERE id = ?` (SQL 원자적 처리)
 - **조회**: `ProductModel.likeCount` 필드를 그대로 반환 — 별도 COUNT 쿼리 없음
@@ -434,7 +434,7 @@ flowchart TD
 
 > - 2번 fast fail은 명백한 재고 부족을 주문 INSERT 이전에 조기 차단하는 역할
 > - 실제 동시성 보장은 FOR UPDATE 락이 담당
-> - product_inventory 테이블에만 락이 걸리므로 상품 조회 성능에 영향 없음 (ADR-006 참고)
+> - product_inventory 테이블에만 락이 걸리므로 상품 조회 성능에 영향 없음 ([ADR-006](./adr/006-product-inventory-table.md) 참고)
 
 ### 어드민 인증
 
@@ -444,7 +444,7 @@ flowchart TD
 
 ## 11. 인증·인가 처리 구조
 
-인증은 `support/auth/` 패키지의 `HandlerInterceptor`로 처리한다 (ADR-011).
+인증은 `support/auth/` 패키지의 `HandlerInterceptor`로 처리한다 ([ADR-011](./adr/011-auth-interceptor-location.md)).
 
 ### User 인증 — `UserAuthInterceptor`
 
@@ -681,7 +681,7 @@ public Optional<LikeModel> findAny(Long userId, Long productId) {
 | `GET /api/v1/products` | `sort` 파라미터 추가 (섹션 7 참고) |
 | `GET /api-admin/v1/products` | |
 | `GET /api/v1/users/{userId}/likes` | |
-| `GET /api/v1/orders` | `startAt` / `endAt` 날짜 필터 함께 사용 (ADR-010) |
+| `GET /api/v1/orders` | `startAt` / `endAt` 날짜 필터 함께 사용 ([ADR-010](./adr/010-order-list-query-spec.md)) |
 | `GET /api-admin/v1/orders` | |
 
 ### 예외
