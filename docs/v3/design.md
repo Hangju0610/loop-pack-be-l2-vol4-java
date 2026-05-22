@@ -97,83 +97,47 @@ infrastructure/
 
 # 2부: 무엇을 제공하나
 
-## 6. 유저 플로우
+## 6. API 엔드포인트
 
-### Customer
+> **인증 컬럼 범례**
+> | 값 | 의미 |
+> |---|---|
+> | `-` | 인증 불필요 |
+> | `User` | X-Loopers-LoginId / X-Loopers-LoginPw 헤더 필요 |
+> | `Admin` | X-Loopers-Ldap: loopers.admin 헤더 필요 |
 
-```
-[인증 불필요]
-  ├── 회원가입 (POST /api/v1/users)
-  ├── 브랜드 단건 조회 (GET /api/v1/brands/{brandId})
-  ├── 상품 목록 조회 (GET /api/v1/products?sort=latest)
-  └── 상품 단건 조회 (GET /api/v1/products/{productId})
+### User
 
-[인증 필요 — X-Loopers-LoginId / X-Loopers-LoginPw 헤더 포함]
-  ├── 내 정보 조회 (GET /api/v1/users/me)
-  ├── 비밀번호 수정 (PUT /api/v1/users/me/password)
-  ├── 좋아요
-  │     ├── 좋아요 등록 (POST /api/v1/products/{productId}/likes)
-  │     ├── 좋아요 취소 (DELETE /api/v1/products/{productId}/likes)
-  │     └── 내 좋아요 목록 (GET /api/v1/users/{userId}/likes)
-  └── 주문
-        ├── 주문 생성 (POST /api/v1/orders)
-        ├── 내 주문 목록 (GET /api/v1/orders?startAt=&endAt=)
-        └── 주문 단건 조회 (GET /api/v1/orders/{orderId})
-```
-
-### Admin
-
-```
-모든 요청에 X-Loopers-Ldap: loopers.admin 헤더 포함
-  ├── 브랜드 관리
-  │     ├── 목록 조회 (GET /api-admin/v1/brands)
-  │     ├── 단건 조회 (GET /api-admin/v1/brands/{brandId})
-  │     ├── 등록 (POST /api-admin/v1/brands)
-  │     ├── 수정 (PUT /api-admin/v1/brands/{brandId})
-  │     └── 삭제 (DELETE /api-admin/v1/brands/{brandId})
-  ├── 상품 관리
-  │     ├── 목록 조회 (GET /api-admin/v1/products)
-  │     ├── 단건 조회 (GET /api-admin/v1/products/{productId})
-  │     ├── 등록 (POST /api-admin/v1/products)
-  │     ├── 수정 (PUT /api-admin/v1/products/{productId})
-  │     └── 삭제 (DELETE /api-admin/v1/products/{productId})
-  └── 주문 관리
-        ├── 목록 조회 (GET /api-admin/v1/orders)
-        └── 단건 조회 (GET /api-admin/v1/orders/{orderId})
-```
-
----
-
-## 7. API 엔드포인트
+| Method | URI | 설명 | 인증 |
+|---|---|---|:---:|
+| POST | `/api/v1/users` | 회원가입 | - |
+| GET | `/api/v1/users/me` | 내 정보 조회 | User |
+| PUT | `/api/v1/users/me/password` | 비밀번호 수정 | User |
 
 ### Brand
 
-**Customer**
-
-| Method | URI | 설명 |
-|---|---|---|
-| GET | `/api/v1/brands/{brandId}` | 브랜드 단건 조회 |
-
-**Admin**
-
-| Method | URI | 설명 |
-|---|---|---|
-| GET | `/api-admin/v1/brands?page=0&size=20` | 브랜드 목록 |
-| GET | `/api-admin/v1/brands/{brandId}` | 브랜드 단건 조회 |
-| POST | `/api-admin/v1/brands` | 브랜드 등록 |
-| PUT | `/api-admin/v1/brands/{brandId}` | 브랜드 수정 |
-| DELETE | `/api-admin/v1/brands/{brandId}` | 브랜드 삭제 (연관 상품 함께 soft delete) |
+| Method | URI | 설명 | 인증 |
+|---|---|---|:---:|
+| GET | `/api/v1/brands/{brandId}` | 브랜드 단건 조회 | - |
+| GET | `/api-admin/v1/brands?page=0&size=20` | 브랜드 목록 | Admin |
+| GET | `/api-admin/v1/brands/{brandId}` | 브랜드 단건 조회 | Admin |
+| POST | `/api-admin/v1/brands` | 브랜드 등록 | Admin |
+| PUT | `/api-admin/v1/brands/{brandId}` | 브랜드 수정 | Admin |
+| DELETE | `/api-admin/v1/brands/{brandId}` | 브랜드 삭제 (연관 상품 함께 soft delete) | Admin |
 
 ### Product
 
-**Customer**
+| Method | URI | 설명 | 인증 |
+|---|---|---|:---:|
+| GET | `/api/v1/products?brandId=&sort=latest&page=0&size=20` | 상품 목록 | - |
+| GET | `/api/v1/products/{productId}` | 상품 단건 조회 | - |
+| GET | `/api-admin/v1/products?brandId=&page=0&size=20` | 상품 목록 (Admin) | Admin |
+| GET | `/api-admin/v1/products/{productId}` | 상품 단건 조회 (Admin) | Admin |
+| POST | `/api-admin/v1/products` | 상품 등록 (브랜드 존재 검증) | Admin |
+| PUT | `/api-admin/v1/products/{productId}` | 상품 수정 (브랜드 변경 불가, 재고 수량 수정 포함) | Admin |
+| DELETE | `/api-admin/v1/products/{productId}` | 상품 삭제 | Admin |
 
-| Method | URI | 설명 |
-|---|---|---|
-| GET | `/api/v1/products?brandId=&sort=latest&page=0&size=20` | 상품 목록 (sort 생략 시 latest 기본값) |
-| GET | `/api/v1/products/{productId}` | 상품 단건 조회 |
-
-> **sort 파라미터 명세**
+> **sort 파라미터 명세** (Customer 상품 목록)
 > | 값 | 정렬 기준 |
 > |---|---|
 > | `latest` (기본값) | 등록일시 내림차순 |
@@ -183,48 +147,28 @@ infrastructure/
 > | `like_desc` | 좋아요 수 내림차순 |
 >
 > sort 파라미터가 없는 경우 `latest`로 대체한다. 알 수 없는 값인 경우 `400 Bad Request`를 반환한다.
-> 위 5가지 값 모두 구현 필수 범위다.
-
-**Admin**
-
-| Method | URI | 설명 |
-|---|---|---|
-| GET | `/api-admin/v1/products?brandId=&page=0&size=20` | 상품 목록 |
-| GET | `/api-admin/v1/products/{productId}` | 상품 단건 조회 |
-| POST | `/api-admin/v1/products` | 상품 등록 (브랜드 존재 검증) |
-| PUT | `/api-admin/v1/products/{productId}` | 상품 수정 (브랜드 변경 불가, 재고 수량 수정 포함) |
-| DELETE | `/api-admin/v1/products/{productId}` | 상품 삭제 |
 
 ### Like
 
-**Customer**
-
-| Method | URI | 설명 |
-|---|---|---|
-| POST | `/api/v1/products/{productId}/likes` | 좋아요 등록 |
-| DELETE | `/api/v1/products/{productId}/likes` | 좋아요 취소 |
-| GET | `/api/v1/users/{userId}/likes` | 내가 좋아요한 상품 목록 (응답 필드: Customer Product PLP와 동일) |
+| Method | URI | 설명 | 인증 |
+|---|---|---|:---:|
+| POST | `/api/v1/products/{productId}/likes` | 좋아요 등록 | User |
+| DELETE | `/api/v1/products/{productId}/likes` | 좋아요 취소 | User |
+| GET | `/api/v1/users/{userId}/likes` | 내가 좋아요한 상품 목록 | User |
 
 ### Order
 
-**Customer**
-
-| Method | URI | 설명 |
-|---|---|---|
-| POST | `/api/v1/orders` | 주문 생성 |
-| GET | `/api/v1/orders?startAt=&endAt=&page=0&size=20` | 내 주문 목록 (page 기본값 0, size 기본값 20) |
-| GET | `/api/v1/orders/{orderId}` | 주문 단건 조회 |
-
-**Admin**
-
-| Method | URI | 설명 |
-|---|---|---|
-| GET | `/api-admin/v1/orders?page=0&size=20` | 주문 목록 |
-| GET | `/api-admin/v1/orders/{orderId}` | 주문 단건 조회 |
+| Method | URI | 설명 | 인증 |
+|---|---|---|:---:|
+| POST | `/api/v1/orders` | 주문 생성 | User |
+| GET | `/api/v1/orders?startAt=&endAt=&page=0&size=20` | 내 주문 목록 | User |
+| GET | `/api/v1/orders/{orderId}` | 주문 단건 조회 | User |
+| GET | `/api-admin/v1/orders?page=0&size=20` | 주문 목록 (Admin) | Admin |
+| GET | `/api-admin/v1/orders/{orderId}` | 주문 단건 조회 (Admin) | Admin |
 
 ---
 
-## 8. 제공 정보 정책
+## 7. 제공 정보 정책
 
 > **HTTP 상태 코드 기준**
 > - 단건/목록 조회 (GET): `200 OK`
@@ -303,7 +247,7 @@ infrastructure/
 
 ---
 
-## 9. 공통 응답 구조
+## 8. 공통 응답 구조
 
 모든 API 응답은 `ApiResponse<T>`로 감싸서 반환한다.
 
@@ -350,7 +294,7 @@ infrastructure/
 
 # 3부: 어떻게 구현하나
 
-## 10. 핵심 비즈니스 로직
+## 9. 핵심 비즈니스 로직
 
 ### Brand 삭제
 
@@ -442,7 +386,7 @@ flowchart TD
 
 ---
 
-## 11. 인증·인가 처리 구조
+## 10. 인증·인가 처리 구조
 
 인증은 `support/auth/` 패키지의 `HandlerInterceptor`로 처리한다 ([ADR-011](./adr/011-auth-interceptor-location.md)).
 
@@ -480,7 +424,7 @@ Controller는 `@LoginUser` 어노테이션으로 `userId`를 주입받는다. `L
 
 ---
 
-## 12. 유효성 검증 레이어 원칙
+## 11. 유효성 검증 레이어 원칙
 
 검증 책임은 두 레이어로 분리한다.
 
@@ -493,7 +437,7 @@ Controller는 `@LoginUser` 어노테이션으로 `userId`를 주입받는다. `L
 
 ---
 
-## 13. 트랜잭션 경계 원칙
+## 12. 트랜잭션 경계 원칙
 
 | 레이어 | 규칙 |
 |---|---|
@@ -512,7 +456,7 @@ Controller는 `@LoginUser` 어노테이션으로 `userId`를 주입받는다. `L
 
 ---
 
-## 14. 연쇄 삭제 정책
+## 13. 연쇄 삭제 정책
 
 모든 삭제는 Soft Delete(`deleted_at = now()`)이며, 연쇄 삭제는 **Facade** 레이어에서 오케스트레이션한다. JPA Cascade는 사용하지 않는다 — Like는 `productId`(Long) ID 참조 방식이라 JPA 관계가 없고, Like와 Product는 서로 다른 Aggregate이므로 ID 참조를 유지한다.
 
@@ -547,7 +491,7 @@ LikeFacade.removeLike(userId, productId)
 
 ---
 
-## 15. Soft Delete 범위 및 조회 정책
+## 14. Soft Delete 범위 및 조회 정책
 
 ### 적용 범위
 
@@ -578,7 +522,7 @@ LikeFacade.removeLike(userId, productId)
 
 ---
 
-## 16. 페이지네이션 공통 정책
+## 15. 페이지네이션 공통 정책
 
 ### 기본값
 
@@ -606,13 +550,13 @@ LikeFacade.removeLike(userId, productId)
 
 # 4부: 참고
 
-## 17. 시퀀스 다이어그램
+## 16. 시퀀스 다이어그램
 
 → [`docs/v3/sequence.md`](./sequence.md) 참고 (전체 API 시퀀스 다이어그램)
 
 ---
 
-## 18. 에러 처리
+## 17. 에러 처리
 
 | 상황 | ErrorType | HTTP |
 |---|---|---|
@@ -634,7 +578,7 @@ LikeFacade.removeLike(userId, productId)
 
 ---
 
-## 19. ADR 목록
+## 18. ADR 목록
 
 | 번호 | 제목 | 파일 |
 |---|---|---|
