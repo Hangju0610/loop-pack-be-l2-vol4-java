@@ -40,13 +40,13 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 
 ## 3. ERD
 
-→ [`docs/v3/erd.md`](./erd.md) 참고
+→ [`docs/v3/04-erd.md`](./04-erd.md) 참고
 
 ---
 
 ## 4. 클래스 다이어그램
 
-→ [`docs/v3/class.md`](./class.md) 참고
+→ [`docs/v3/03-class-diagram.md`](./03-class-diagram.md) 참고
 
 ---
 
@@ -573,7 +573,7 @@ LikeFacade.removeLike(userId, productId)
 
 ## 16. 시퀀스 다이어그램
 
-→ [`docs/v3/sequence.md`](./sequence.md) 참고 (전체 API 시퀀스 다이어그램)
+→ [`docs/v3/02-sequence-diagrams.md`](./02-sequence-diagrams.md) 참고 (전체 API 시퀀스 다이어그램)
 
 ---
 
