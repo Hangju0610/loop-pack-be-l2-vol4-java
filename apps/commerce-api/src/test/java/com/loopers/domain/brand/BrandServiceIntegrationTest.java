@@ -2,79 +2,33 @@ package com.loopers.domain.brand;
 
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
-import org.junit.jupiter.api.BeforeEach;
+import com.loopers.utils.DatabaseCleanUp;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-
-import java.time.ZonedDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class BrandServiceTest {
-
-    private FakeBrandRepository brandRepository;
-    private BrandService brandService;
+@SpringBootTest
+class BrandServiceIntegrationTest {
 
     private static final String BRAND_NAME = "나이키";
     private static final String BRAND_DESCRIPTION = "스포츠 브랜드";
 
-    @BeforeEach
-    void setUp() {
-        brandRepository = new FakeBrandRepository();
-        brandService = new BrandService(brandRepository);
-    }
+    @Autowired
+    private BrandService brandService;
 
-    static class FakeBrandRepository implements BrandRepository {
-        private final Map<Long, BrandEntity> store = new HashMap<>();
-        private long nextId = 1L;
+    @Autowired
+    private DatabaseCleanUp databaseCleanUp;
 
-        @Override
-        public BrandEntity save(BrandEntity brand) {
-            if (brand.getId() == null) {
-                long id = nextId++;
-                BrandEntity saved = BrandEntity.of(id, brand.getName(), brand.getDescription(),
-                        ZonedDateTime.now(), ZonedDateTime.now(), null);
-                store.put(id, saved);
-                return saved;
-            }
-            store.put(brand.getId(), brand);
-            return brand;
-        }
-
-        @Override
-        public Optional<BrandEntity> findById(Long id) {
-            BrandEntity entity = store.get(id);
-            if (entity == null || entity.getDeletedAt() != null) return Optional.empty();
-            return Optional.of(BrandEntity.of(entity.getId(), entity.getName(), entity.getDescription(),
-                    entity.getCreatedAt(), entity.getUpdatedAt(), entity.getDeletedAt()));
-        }
-
-        @Override
-        public Page<BrandEntity> findAll(Pageable pageable) {
-            List<BrandEntity> active = store.values().stream()
-                    .filter(b -> b.getDeletedAt() == null)
-                    .toList();
-            int start = (int) pageable.getOffset();
-            int end = Math.min(start + pageable.getPageSize(), active.size());
-            List<BrandEntity> content = start >= active.size() ? List.of() : active.subList(start, end);
-            return new PageImpl<>(content, pageable, active.size());
-        }
-
-        @Override
-        public Optional<BrandEntity> findByName(String name) {
-            return store.values().stream()
-                    .filter(b -> b.getName().equals(name) && b.getDeletedAt() == null)
-                    .findFirst();
-        }
+    @AfterEach
+    void tearDown() {
+        databaseCleanUp.truncateAllTables();
     }
 
     @DisplayName("브랜드 생성")
