@@ -39,6 +39,10 @@ public abstract class BaseJpaEntity {
         this.id = id;
     }
 
+    protected void setDeletedAt(ZonedDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
     protected void guard() {}
 
     @PrePersist
