@@ -26,11 +26,11 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 
 | 관계 | 방식 | 근거 |
 |---|---|---|
-| Product → Brand | `@ManyToOne` (NO_CONSTRAINT) | 상품 조회 시 브랜드명 JOIN 필요 |
+| Product → Brand | `brandId Long` 참조 | JPA 관계 없음, 조회 시 Repository에서 JOIN |
 | Product.likeCount | DB 비정규화 컬럼 | SQL 원자적 증감으로 COUNT 쿼리 제거 ([ADR-003](./adr/003-like-count-query.md)) |
-| Product.quantity | PRODUCT_INVENTORY JOIN 필드 | 상품 조회 시 재고 포함 반환 — 별도 재고 조회 불필요, 품절 여부 노출 |
+| Product.quantity | INVENTORY JOIN 필드 | 상품 조회 시 재고 포함 반환 — 별도 재고 조회 불필요, 품절 여부 노출 |
 | Like → User / Product | `userId`, `productId` Long | 존재 여부 확인만 필요, JPA 관계 불필요 |
-| OrderItem → Order | `@ManyToOne` | 동일 Aggregate, 생명주기 공유 |
+| OrderItem → Order | `orderId Long` 참조 | JPA 관계 없음, 동일 Aggregate는 RepositoryImpl에서 조합 |
 | OrderItem → Product | `productId` + 스냅샷 컬럼 | 주문 시점 정보 보존 (요구사항 명시) |
 | Order → User | `userId` Long | 유저 변경과 주문 이력 분리 |
 
@@ -79,18 +79,20 @@ application/
 └── order/   OrderFacade, OrderInfo
 
 domain/
-├── brand/   BrandModel, BrandRepository, BrandService
-├── product/ ProductModel, ProductInventoryModel,
-│            ProductRepository, ProductInventoryRepository, ProductService
-├── like/    LikeModel, LikeRepository, LikeService
-└── order/   OrderModel, OrderItemModel, OrderRepository, OrderService
+├── brand/   BrandEntity, BrandRepository, BrandService
+├── product/ ProductEntity, InventoryEntity,
+│            ProductRepository, InventoryRepository, ProductService, InventoryService
+├── like/    LikeEntity, LikeRepository, LikeService
+└── order/   OrderEntity, OrderItemEntity, OrderRepository, OrderService
 
 infrastructure/
-├── brand/   BrandJpaRepository, BrandRepositoryImpl
-├── product/ ProductJpaRepository, ProductRepositoryImpl,
-│            ProductInventoryJpaRepository, ProductInventoryRepositoryImpl
-├── like/    LikeJpaRepository, LikeRepositoryImpl
-└── order/   OrderJpaRepository, OrderRepositoryImpl
+├── brand/   BrandJpaEntity, BrandJpaRepository, BrandRepositoryImpl
+├── product/ ProductJpaEntity, InventoryJpaEntity,
+│            ProductJpaRepository, ProductRepositoryImpl,
+│            InventoryJpaRepository, InventoryRepositoryImpl
+├── like/    LikeJpaEntity, LikeJpaRepository, LikeRepositoryImpl
+└── order/   OrderJpaEntity, OrderItemJpaEntity,
+             OrderJpaRepository, OrderRepositoryImpl
 ```
 
 ---
@@ -305,7 +307,7 @@ BrandFacade.deleteBrand(brandId)
   ├── BrandService.delete(brandId) → brand 조회 후 brand.delete()
   ├── ProductService.findIdsByBrand(brandId) → List<productId>
   ├── ProductService.deleteAll(productIds)
-  ├── ProductInventoryService.deleteAllByProducts(productIds)
+  ├── InventoryService.deleteAllByProducts(productIds)
   └── LikeService.deleteAllByProducts(productIds)
 ```
 
@@ -316,7 +318,7 @@ BrandFacade.deleteBrand(brandId)
 ```
 ProductFacade.deleteProduct(productId)
   ├── ProductService.delete(productId)          → product.delete()
-  └── ProductInventoryService.deleteByProduct(productId) → inventory.delete()
+  └── InventoryService.deleteByProduct(productId) → inventory.delete()
 ```
 
 > 상품이 soft delete되면 ProductInventory도 동일하게 soft delete한다. 이후 재고 조회 시 `deleted_at IS NULL` 필터로 제외된다.
@@ -330,7 +332,7 @@ ProductFacade.deleteProduct(productId)
 
 ### 상품 등록 / 수정
 
-- 등록: `brandId`로 Brand 존재 여부 검증 후 ProductModel 생성, ProductInventoryModel도 함께 생성
+- 등록: `brandId`로 Brand 존재 여부 검증 후 ProductEntity 생성, InventoryEntity도 함께 생성
 - 수정: 브랜드 변경 불가 — `brand` 필드는 update 메서드에서 제외
 - `quantity` 검증: 0 이상 정수만 허용. 0은 품절 상태로 허용, 음수는 `400 Bad Request`
 - 품절 상품(`quantity = 0`)은 Customer 목록/단건 조회에 정상 노출. 주문 시 재고 부족으로 `400 Bad Request` 처리
@@ -349,7 +351,7 @@ stateDiagram-v2
 - POST: `findByUserIdAndProductId` (deleted_at 포함 전체 조회)
   - active 존재 → 409 Conflict
   - soft-deleted 존재 → `restore()` [deleted_at = null]
-  - 없음 → `save(new LikeModel)`
+  - 없음 → `save(new LikeEntity)`
 - DELETE: `findByUserIdAndProductId` (deleted_at IS NULL, active만)
   - 없으면 404 Not Found
   - 존재 → `like.delete()` [deleted_at = now()]
@@ -364,7 +366,7 @@ stateDiagram-v2
 - `product` 테이블의 `like_count` 컬럼으로 관리 (DB 비정규화, [ADR-003](./adr/003-like-count-query.md))
 - **등록**: `UPDATE product SET like_count = like_count + 1 WHERE id = ?` (SQL 원자적 처리)
 - **취소**: `UPDATE product SET like_count = like_count - 1 WHERE id = ?` (SQL 원자적 처리)
-- **조회**: `ProductModel.likeCount` 필드를 그대로 반환 — 별도 COUNT 쿼리 없음
+- **조회**: `ProductEntity.likeCount` 필드를 그대로 반환 — 별도 COUNT 쿼리 없음
 
 ### 주문 생성
 
@@ -372,11 +374,11 @@ stateDiagram-v2
 flowchart TD
     A[주문 요청] --> B{"items 유효성 검증<br/>빈 배열 / quantity≤0 / 중복 productId"}
     B -- 실패 --> C[400 Bad Request]
-    B -- 통과 --> D{"상품 조회<br/>PRODUCT JOIN PRODUCT_INVENTORY"}
+    B -- 통과 --> D{"상품 조회<br/>PRODUCT JOIN INVENTORY"}
     D -- 없는 상품 포함 --> E[404 Not Found]
     D -- 성공 --> F{"재고 확인<br/>fast fail, 락 없음"}
     F -- quantity 부족 --> G[400 Bad Request]
-    F -- 통과 --> H["Transactional 시작<br/>주문 생성 INSERT<br/>OrderModel + OrderItemModel 스냅샷"]
+    F -- 통과 --> H["Transactional 시작<br/>주문 생성 INSERT<br/>OrderEntity + OrderItemEntity 스냅샷"]
     H --> I{"재고 차감<br/>SELECT FOR UPDATE<br/>productInventory.deduct"}
     I -- 재고 부족 --> J[Rollback → 400]
     I -- 성공 --> K[Commit → 201 Created]
@@ -471,7 +473,7 @@ Controller는 `@LoginUser` 어노테이션으로 `userId`를 주입받는다. `L
 
 ### 예외 — OrderFacade.createOrder()
 
-주문 생성과 재고 차감은 반드시 하나의 트랜잭션으로 묶여야 한다. 두 작업은 서로 다른 Service(`OrderService`, `ProductInventoryService`)가 담당하므로, Facade에서 트랜잭션 경계를 감싼다.
+주문 생성과 재고 차감은 반드시 하나의 트랜잭션으로 묶여야 한다. 두 작업은 서로 다른 Service(`OrderService`, `InventoryService`)가 담당하므로, Facade에서 트랜잭션 경계를 감싼다.
 
 > Service 간 직접 의존성 주입은 DDD 원칙에 어긋나므로 최대한 지양한다. 여러 Service를 조합해야 하는 원자적 작업은 Facade가 트랜잭션 경계를 갖는 방식으로 처리한다.
 
@@ -488,7 +490,7 @@ BrandFacade.deleteBrand(brandId)
   ├── BrandService.delete(brandId)
   ├── ProductService.findIdsByBrand(brandId) → List<productId>
   ├── ProductService.deleteAll(productIds)
-  ├── ProductInventoryService.deleteAllByProducts(productIds)
+  ├── InventoryService.deleteAllByProducts(productIds)
   └── LikeService.deleteAllByProducts(productIds)
 ```
 
@@ -497,7 +499,7 @@ BrandFacade.deleteBrand(brandId)
 ```
 ProductFacade.deleteProduct(productId)
   ├── ProductService.delete(productId)
-  ├── ProductInventoryService.deleteByProduct(productId)
+  ├── InventoryService.deleteByProduct(productId)
   └── LikeService.deleteAllByProduct(productId)
 ```
 
