@@ -12,4 +12,6 @@ public interface ProductRepository {
     Page<ProductEntity> findAll(Long brandId, Pageable pageable);
     List<Long> findIdsByBrandId(Long brandId);
     List<ProductEntity> findAllByIds(List<Long> ids);
+    void incrementLikeCount(Long id);
+    void decrementLikeCount(Long id);
 }

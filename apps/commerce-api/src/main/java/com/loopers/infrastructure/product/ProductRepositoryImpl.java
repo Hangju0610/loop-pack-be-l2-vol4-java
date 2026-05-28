@@ -48,4 +48,14 @@ public class ProductRepositoryImpl implements ProductRepository {
                 .map(ProductMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public void incrementLikeCount(Long id) {
+        productJpaRepository.incrementLikeCount(id);
+    }
+
+    @Override
+    public void decrementLikeCount(Long id) {
+        productJpaRepository.decrementLikeCount(id);
+    }
 }
