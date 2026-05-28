@@ -11,13 +11,14 @@ import java.util.Optional;
 @Component
 public class UserRepositoryImpl implements UserRepository {
     private final UserJpaRepository userJpaRepository;
+
     @Override
     public UserModel save(UserModel user) {
-        return userJpaRepository.save(user);
+        return UserMapper.toDomain(userJpaRepository.save(UserMapper.toJpaEntity(user)));
     }
 
     @Override
     public Optional<UserModel> findByUserId(String userId) {
-        return userJpaRepository.findByUserId(userId);
+        return userJpaRepository.findByUserId(userId).map(UserMapper::toDomain);
     }
 }
