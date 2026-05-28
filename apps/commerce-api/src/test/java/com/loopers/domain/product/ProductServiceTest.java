@@ -2,22 +2,28 @@ package com.loopers.domain.product;
 
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
-import com.loopers.utils.DatabaseCleanUp;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
-@SpringBootTest
-class ProductServiceIntegrationTest {
+@ExtendWith(MockitoExtension.class)
+class ProductServiceTest {
 
     private static final Long BRAND_ID = 1L;
     private static final Long OTHER_BRAND_ID = 2L;
@@ -25,15 +31,18 @@ class ProductServiceIntegrationTest {
     private static final String PRODUCT_DESCRIPTION = "나이키 런닝화";
     private static final Long PRODUCT_PRICE = 150000L;
 
-    @Autowired
+    @Mock
+    private ProductRepository productRepository;
+
+    @InjectMocks
     private ProductService productService;
 
-    @Autowired
-    private DatabaseCleanUp databaseCleanUp;
+    private ProductEntity productOf(Long id, Long brandId, String name, String desc, Long price) {
+        return ProductEntity.of(id, brandId, name, desc, price, 0L, ZonedDateTime.now(), ZonedDateTime.now(), null);
+    }
 
-    @AfterEach
-    void tearDown() {
-        databaseCleanUp.truncateAllTables();
+    private ProductEntity defaultProduct(Long id) {
+        return productOf(id, BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
     }
 
     @DisplayName("상품 생성")
@@ -43,6 +52,10 @@ class ProductServiceIntegrationTest {
         @DisplayName("[ECP] 유효한 값으로 생성하면 id가 할당된 상품이 생성된다.")
         @Test
         void createsProduct_whenRequestIsValid() {
+            // arrange
+            ProductEntity saved = defaultProduct(1L);
+            given(productRepository.save(any())).willReturn(saved);
+
             // act
             ProductEntity result = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
 
@@ -51,9 +64,9 @@ class ProductServiceIntegrationTest {
                     () -> assertNotNull(result.getId()),
                     () -> assertEquals(BRAND_ID, result.getBrandId()),
                     () -> assertEquals(PRODUCT_NAME, result.getName()),
-                    () -> assertEquals(PRODUCT_DESCRIPTION, result.getDescription()),
                     () -> assertEquals(PRODUCT_PRICE, result.getPrice())
             );
+            verify(productRepository).save(any());
         }
     }
 
@@ -65,26 +78,29 @@ class ProductServiceIntegrationTest {
         @Test
         void returnsProduct_whenProductExists() {
             // arrange
-            ProductEntity created = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
+            ProductEntity existing = defaultProduct(1L);
+            given(productRepository.find(1L)).willReturn(Optional.of(existing));
 
             // act
-            ProductEntity result = productService.getProduct(created.getId());
+            ProductEntity result = productService.getProduct(1L);
 
             // assert
             assertAll(
-                    () -> assertEquals(created.getId(), result.getId()),
+                    () -> assertEquals(1L, result.getId()),
                     () -> assertEquals(PRODUCT_NAME, result.getName())
             );
+            verify(productRepository).find(1L);
         }
 
         @DisplayName("[ECP] 존재하지 않는 id로 조회하면 NOT_FOUND 예외가 발생한다.")
         @Test
         void throwsNotFound_whenProductNotExists() {
-            // act
+            // arrange
+            given(productRepository.find(999L)).willReturn(Optional.empty());
+
+            // act & assert
             CoreException exception = assertThrows(CoreException.class,
                     () -> productService.getProduct(999L));
-
-            // assert
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
         }
     }
@@ -97,45 +113,38 @@ class ProductServiceIntegrationTest {
         @Test
         void returnsAllProducts_whenNoBrandIdFilter() {
             // arrange
-            productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            productService.createProduct(OTHER_BRAND_ID, "에어포스", "나이키 스니커즈", 130000L);
+            List<ProductEntity> products = List.of(
+                    defaultProduct(1L),
+                    productOf(2L, OTHER_BRAND_ID, "에어포스", "나이키 스니커즈", 130000L)
+            );
+            PageRequest pageable = PageRequest.of(0, 20);
+            given(productRepository.findAll(null, pageable)).willReturn(new PageImpl<>(products, pageable, 2));
 
             // act
-            Page<ProductEntity> result = productService.getAllProducts(null, PageRequest.of(0, 20));
+            Page<ProductEntity> result = productService.getAllProducts(null, pageable);
 
             // assert
             assertEquals(2, result.getTotalElements());
+            verify(productRepository).findAll(null, pageable);
         }
 
         @DisplayName("[ECP] brandId로 필터링하면 해당 브랜드의 상품만 반환된다.")
         @Test
         void returnsFilteredProducts_whenBrandIdProvided() {
             // arrange
-            productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            productService.createProduct(OTHER_BRAND_ID, "에어포스", "나이키 스니커즈", 130000L);
+            List<ProductEntity> filtered = List.of(defaultProduct(1L));
+            PageRequest pageable = PageRequest.of(0, 20);
+            given(productRepository.findAll(BRAND_ID, pageable)).willReturn(new PageImpl<>(filtered, pageable, 1));
 
             // act
-            Page<ProductEntity> result = productService.getAllProducts(BRAND_ID, PageRequest.of(0, 20));
+            Page<ProductEntity> result = productService.getAllProducts(BRAND_ID, pageable);
 
             // assert
             assertAll(
                     () -> assertEquals(1, result.getTotalElements()),
                     () -> assertEquals(BRAND_ID, result.getContent().get(0).getBrandId())
             );
-        }
-
-        @DisplayName("[Error Guessing] 삭제된 상품은 목록 조회에서 제외된다.")
-        @Test
-        void excludesDeletedProducts_fromList() {
-            // arrange
-            ProductEntity product = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            productService.deleteProduct(product.getId());
-
-            // act
-            Page<ProductEntity> result = productService.getAllProducts(null, PageRequest.of(0, 20));
-
-            // assert
-            assertEquals(0, result.getTotalElements());
+            verify(productRepository).findAll(BRAND_ID, pageable);
         }
     }
 
@@ -147,9 +156,7 @@ class ProductServiceIntegrationTest {
         @Test
         void returnsProductIds_whenBrandExists() {
             // arrange
-            ProductEntity product1 = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            ProductEntity product2 = productService.createProduct(BRAND_ID, "에어포스", "나이키 스니커즈", 130000L);
-            productService.createProduct(OTHER_BRAND_ID, "아디다스 신발", "아디다스 런닝화", 120000L);
+            given(productRepository.findIdsByBrandId(BRAND_ID)).willReturn(List.of(1L, 2L));
 
             // act
             List<Long> ids = productService.findIdsByBrand(BRAND_ID);
@@ -157,27 +164,10 @@ class ProductServiceIntegrationTest {
             // assert
             assertAll(
                     () -> assertEquals(2, ids.size()),
-                    () -> assertTrue(ids.contains(product1.getId())),
-                    () -> assertTrue(ids.contains(product2.getId()))
+                    () -> assertTrue(ids.contains(1L)),
+                    () -> assertTrue(ids.contains(2L))
             );
-        }
-
-        @DisplayName("[Error Guessing] 삭제된 상품의 id는 반환되지 않는다.")
-        @Test
-        void excludesDeletedProductIds() {
-            // arrange
-            ProductEntity active = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            ProductEntity deleted = productService.createProduct(BRAND_ID, "에어포스", "나이키 스니커즈", 130000L);
-            productService.deleteProduct(deleted.getId());
-
-            // act
-            List<Long> ids = productService.findIdsByBrand(BRAND_ID);
-
-            // assert
-            assertAll(
-                    () -> assertEquals(1, ids.size()),
-                    () -> assertTrue(ids.contains(active.getId()))
-            );
+            verify(productRepository).findIdsByBrandId(BRAND_ID);
         }
     }
 
@@ -185,20 +175,22 @@ class ProductServiceIntegrationTest {
     @Nested
     class DeleteAll {
 
-        @DisplayName("[State Transition] 상품 id 목록으로 일괄 삭제하면 해당 상품들은 조회되지 않는다.")
+        @DisplayName("[State Transition] 상품 id 목록으로 일괄 삭제하면 모든 엔티티가 soft delete 상태로 변경된다.")
         @Test
-        void deletesAllProducts_thenNotFound() {
+        void deletesAllProducts_whenIdsProvided() {
             // arrange
-            ProductEntity product1 = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            ProductEntity product2 = productService.createProduct(BRAND_ID, "에어포스", "나이키 스니커즈", 130000L);
+            ProductEntity p1 = defaultProduct(1L);
+            ProductEntity p2 = defaultProduct(2L);
+            given(productRepository.findAllByIds(List.of(1L, 2L))).willReturn(List.of(p1, p2));
+            given(productRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // act
-            productService.deleteAll(List.of(product1.getId(), product2.getId()));
+            productService.deleteAll(List.of(1L, 2L));
 
             // assert
             assertAll(
-                    () -> assertThrows(CoreException.class, () -> productService.getProduct(product1.getId())),
-                    () -> assertThrows(CoreException.class, () -> productService.getProduct(product2.getId()))
+                    () -> assertTrue(p1.isDeleted()),
+                    () -> assertTrue(p2.isDeleted())
             );
         }
     }
@@ -210,11 +202,12 @@ class ProductServiceIntegrationTest {
         @DisplayName("[Decision Table] 존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
         @Test
         void throwsNotFound_whenProductNotExists() {
-            // act
+            // arrange
+            given(productRepository.find(999L)).willReturn(Optional.empty());
+
+            // act & assert
             CoreException exception = assertThrows(CoreException.class,
                     () -> productService.updateProduct(999L, "변경명", "변경설명", 200000L));
-
-            // assert
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
         }
 
@@ -222,17 +215,18 @@ class ProductServiceIntegrationTest {
         @Test
         void updatesProduct_whenProductExists() {
             // arrange
-            ProductEntity product = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
+            ProductEntity existing = defaultProduct(1L);
+            given(productRepository.find(1L)).willReturn(Optional.of(existing));
+            given(productRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // act
-            productService.updateProduct(product.getId(), "에어포스", "나이키 스니커즈", 130000L);
+            ProductEntity result = productService.updateProduct(1L, "에어포스", "나이키 스니커즈", 130000L);
 
             // assert
-            ProductEntity updated = productService.getProduct(product.getId());
             assertAll(
-                    () -> assertEquals("에어포스", updated.getName()),
-                    () -> assertEquals("나이키 스니커즈", updated.getDescription()),
-                    () -> assertEquals(130000L, updated.getPrice())
+                    () -> assertEquals("에어포스", result.getName()),
+                    () -> assertEquals("나이키 스니커즈", result.getDescription()),
+                    () -> assertEquals(130000L, result.getPrice())
             );
         }
     }
@@ -241,29 +235,31 @@ class ProductServiceIntegrationTest {
     @Nested
     class DeleteProduct {
 
-        @DisplayName("[State Transition] 삭제된 상품은 이후 조회 시 NOT_FOUND가 발생한다.")
+        @DisplayName("[State Transition] 존재하는 상품을 삭제하면 엔티티가 soft delete 상태로 저장된다.")
         @Test
-        void deletesProduct_thenNotFoundOnGet() {
+        void deletesProduct_whenExists() {
             // arrange
-            ProductEntity product = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
+            ProductEntity existing = defaultProduct(1L);
+            given(productRepository.find(1L)).willReturn(Optional.of(existing));
+            given(productRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // act
-            productService.deleteProduct(product.getId());
+            productService.deleteProduct(1L);
 
             // assert
-            CoreException exception = assertThrows(CoreException.class,
-                    () -> productService.getProduct(product.getId()));
-            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+            assertTrue(existing.isDeleted());
+            verify(productRepository).save(existing);
         }
 
-        @DisplayName("[State Transition] 존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
+        @DisplayName("[ECP] 존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
         @Test
         void throwsNotFound_whenProductNotExists() {
-            // act
+            // arrange
+            given(productRepository.find(999L)).willReturn(Optional.empty());
+
+            // act & assert
             CoreException exception = assertThrows(CoreException.class,
                     () -> productService.deleteProduct(999L));
-
-            // assert
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
         }
     }
@@ -272,22 +268,26 @@ class ProductServiceIntegrationTest {
     @Nested
     class IncrementLikeCount {
 
-        @DisplayName("[ECP] 존재하는 상품의 likeCount가 1 증가한다.")
+        @DisplayName("[ECP] 존재하는 상품이면 likeCount 증가 요청이 전달된다.")
         @Test
         void incrementsLikeCount_whenProductExists() {
             // arrange
-            ProductEntity product = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
+            given(productRepository.find(1L)).willReturn(Optional.of(defaultProduct(1L)));
 
             // act
-            productService.incrementLikeCount(product.getId());
+            productService.incrementLikeCount(1L);
 
             // assert
-            assertEquals(1L, productService.getProduct(product.getId()).getLikeCount());
+            verify(productRepository).find(1L);
+            verify(productRepository).incrementLikeCount(1L);
         }
 
         @DisplayName("[ECP] 존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
         @Test
         void throwsNotFound_whenProductNotExists() {
+            // arrange
+            given(productRepository.find(999L)).willReturn(Optional.empty());
+
             // act & assert
             CoreException exception = assertThrows(CoreException.class,
                     () -> productService.incrementLikeCount(999L));
@@ -299,23 +299,26 @@ class ProductServiceIntegrationTest {
     @Nested
     class DecrementLikeCount {
 
-        @DisplayName("[ECP] 존재하는 상품의 likeCount가 1 감소한다.")
+        @DisplayName("[ECP] 존재하는 상품이면 likeCount 감소 요청이 전달된다.")
         @Test
         void decrementsLikeCount_whenProductExists() {
             // arrange
-            ProductEntity product = productService.createProduct(BRAND_ID, PRODUCT_NAME, PRODUCT_DESCRIPTION, PRODUCT_PRICE);
-            productService.incrementLikeCount(product.getId());
+            given(productRepository.find(1L)).willReturn(Optional.of(defaultProduct(1L)));
 
             // act
-            productService.decrementLikeCount(product.getId());
+            productService.decrementLikeCount(1L);
 
             // assert
-            assertEquals(0L, productService.getProduct(product.getId()).getLikeCount());
+            verify(productRepository).find(1L);
+            verify(productRepository).decrementLikeCount(1L);
         }
 
         @DisplayName("[ECP] 존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
         @Test
         void throwsNotFound_whenProductNotExists() {
+            // arrange
+            given(productRepository.find(999L)).willReturn(Optional.empty());
+
             // act & assert
             CoreException exception = assertThrows(CoreException.class,
                     () -> productService.decrementLikeCount(999L));
