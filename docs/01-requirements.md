@@ -73,26 +73,26 @@ interfaces/api/
     └── OrderV1Dto
 
 application/
-├── brand/   BrandFacade, BrandInfo
-├── product/ ProductFacade, ProductInfo
-├── like/    LikeFacade, LikeInfo
-└── order/   OrderFacade, OrderInfo
+├── brand/     BrandFacade, BrandInfo
+├── product/   ProductFacade, ProductInfo
+├── inventory/ InventoryFacade, InventoryInfo
+├── like/      LikeFacade, LikeInfo
+└── order/     OrderFacade, OrderInfo
 
 domain/
-├── brand/   BrandEntity, BrandRepository, BrandService
-├── product/ ProductEntity, InventoryEntity,
-│            ProductRepository, InventoryRepository, ProductService, InventoryService
-├── like/    LikeEntity, LikeRepository, LikeService
-└── order/   OrderEntity, OrderItemEntity, OrderRepository, OrderService
+├── brand/     BrandEntity, BrandRepository, BrandService
+├── product/   ProductEntity, ProductRepository, ProductService
+├── inventory/ InventoryEntity, InventoryRepository, InventoryService
+├── like/      LikeEntity, LikeRepository, LikeService
+└── order/     OrderEntity, OrderItemEntity, OrderRepository, OrderService
 
 infrastructure/
-├── brand/   BrandJpaEntity, BrandJpaRepository, BrandRepositoryImpl
-├── product/ ProductJpaEntity, InventoryJpaEntity,
-│            ProductJpaRepository, ProductRepositoryImpl,
-│            InventoryJpaRepository, InventoryRepositoryImpl
-├── like/    LikeJpaEntity, LikeJpaRepository, LikeRepositoryImpl
-└── order/   OrderJpaEntity, OrderItemJpaEntity,
-             OrderJpaRepository, OrderRepositoryImpl
+├── brand/     BrandJpaEntity, BrandJpaRepository, BrandRepositoryImpl
+├── product/   ProductJpaEntity, ProductJpaRepository, ProductRepositoryImpl
+├── inventory/ InventoryJpaEntity, InventoryJpaRepository, InventoryRepositoryImpl
+├── like/      LikeJpaEntity, LikeJpaRepository, LikeRepositoryImpl
+└── order/     OrderJpaEntity, OrderItemJpaEntity,
+               OrderJpaRepository, OrderRepositoryImpl
 ```
 
 ---
