@@ -279,4 +279,82 @@ class OrderFacadeIntegrationTest {
             assertThat(result.getContent()).isEmpty();
         }
     }
+
+    // ─────────────────────────────────────────────
+    // getAdminOrders — Admin 전체 주문 목록 조회
+    // ─────────────────────────────────────────────
+
+    @DisplayName("전체 주문 목록 조회 (Admin)")
+    @Nested
+    class GetAdminOrders {
+
+        @DisplayName("[ECP] 여러 유저의 주문이 모두 반환된다.")
+        @Test
+        void returnsAllOrders_acrossAllUsers() {
+            // arrange
+            UserEntity user1 = createUser("testuser1");
+            UserEntity user2 = createUser("testuser2");
+            BrandInfo brand = brandFacade.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 20);
+            orderFacade.createOrder(user1.getId(), List.of(new OrderItemCommand(product.id(), 1)));
+            orderFacade.createOrder(user2.getId(), List.of(new OrderItemCommand(product.id(), 1)));
+
+            // act
+            Page<OrderInfo> result = orderFacade.getAdminOrders(PageRequest.of(0, 20));
+
+            // assert
+            assertAll(
+                    () -> assertEquals(2, result.getTotalElements()),
+                    () -> assertTrue(result.getContent().stream().allMatch(o -> o.userId() != null))
+            );
+        }
+
+        @DisplayName("[ECP] 주문이 없으면 빈 페이지가 반환된다.")
+        @Test
+        void returnsEmptyPage_whenNoOrdersExist() {
+            // act
+            Page<OrderInfo> result = orderFacade.getAdminOrders(PageRequest.of(0, 20));
+
+            // assert
+            assertThat(result.getContent()).isEmpty();
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // getAdminOrder — Admin 주문 단건 조회
+    // ─────────────────────────────────────────────
+
+    @DisplayName("주문 단건 조회 (Admin)")
+    @Nested
+    class GetAdminOrder {
+
+        @DisplayName("[ECP] 임의의 주문을 소유권 검증 없이 조회할 수 있다.")
+        @Test
+        void returnsOrderInfo_withoutOwnershipCheck() {
+            // arrange
+            UserEntity user1 = createUser("testuser1");
+            BrandInfo brand = brandFacade.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 10);
+            OrderInfo created = orderFacade.createOrder(user1.getId(),
+                    List.of(new OrderItemCommand(product.id(), 1)));
+
+            // act — Admin은 다른 유저의 주문도 조회 가능
+            OrderInfo result = orderFacade.getAdminOrder(created.orderId());
+
+            // assert
+            assertAll(
+                    () -> assertEquals(created.orderId(), result.orderId()),
+                    () -> assertEquals(user1.getId(), result.userId())
+            );
+        }
+
+        @DisplayName("[ECP] 존재하지 않는 orderId 조회 시 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFound_whenOrderNotExists() {
+            // act & assert
+            CoreException exception = assertThrows(CoreException.class,
+                    () -> orderFacade.getAdminOrder(999L));
+            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+        }
+    }
 }
