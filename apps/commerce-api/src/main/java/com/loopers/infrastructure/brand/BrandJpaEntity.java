@@ -25,9 +25,7 @@ public class BrandJpaEntity extends BaseJpaEntity {
         if (id != null) {
             setId(id);
         }
-        if (deletedAt != null) {
-            setDeletedAt(deletedAt);
-        }
+        this.deletedAt = deletedAt;
         this.name = name;
         this.description = description;
     }
