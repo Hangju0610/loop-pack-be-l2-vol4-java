@@ -157,7 +157,7 @@ class BrandServiceTest {
             verify(brandRepository, times(1)).save(existing);
         }
 
-        @DisplayName("존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
+        @DisplayName("존재하지 않는 id이면 NOT_FOUND 예외가 발생하고 save는 호출되지 않는다.")
         @Test
         void throwsNotFound_whenBrandNotExists() {
             // arrange
@@ -169,9 +169,10 @@ class BrandServiceTest {
 
             // assert
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+            verify(brandRepository, never()).save(any());
         }
 
-        @DisplayName("다른 브랜드와 name이 중복되면 CONFLICT 예외가 발생한다.")
+        @DisplayName("다른 브랜드와 name이 중복되면 CONFLICT 예외가 발생하고 save는 호출되지 않는다.")
         @Test
         void throwsConflict_whenNameBelongsToAnotherBrand() {
             // arrange
@@ -186,6 +187,7 @@ class BrandServiceTest {
 
             // assert
             assertEquals(ErrorType.CONFLICT, exception.getErrorType());
+            verify(brandRepository, never()).save(any());
         }
 
         @DisplayName("현재 브랜드와 동일한 name으로 수정하면 성공한다. (자기 자신과 중복 허용)")
@@ -202,6 +204,7 @@ class BrandServiceTest {
 
             // assert
             assertEquals(BRAND_NAME, result.getName());
+            verify(brandRepository, times(1)).save(existing);
         }
     }
 
@@ -224,7 +227,7 @@ class BrandServiceTest {
             verify(brandRepository, times(1)).save(existing);
         }
 
-        @DisplayName("존재하지 않는 id이면 NOT_FOUND 예외가 발생한다.")
+        @DisplayName("존재하지 않는 id이면 NOT_FOUND 예외가 발생하고 save는 호출되지 않는다.")
         @Test
         void throwsNotFound_whenBrandNotExists() {
             // arrange
@@ -236,6 +239,7 @@ class BrandServiceTest {
 
             // assert
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+            verify(brandRepository, never()).save(any());
         }
     }
 }
