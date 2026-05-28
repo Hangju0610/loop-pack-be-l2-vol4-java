@@ -52,6 +52,18 @@ public class ProductService {
     }
 
     @Transactional
+    public void incrementLikeCount(Long id) {
+        getProduct(id);
+        productRepository.incrementLikeCount(id);
+    }
+
+    @Transactional
+    public void decrementLikeCount(Long id) {
+        getProduct(id);
+        productRepository.decrementLikeCount(id);
+    }
+
+    @Transactional
     public void deleteAll(List<Long> ids) {
         productRepository.findAllByIds(ids).forEach(product -> {
             product.delete();
