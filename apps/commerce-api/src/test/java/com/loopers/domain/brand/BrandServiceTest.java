@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,23 +42,22 @@ class BrandServiceTest {
     @Nested
     class Create {
 
-        @DisplayName("유효한 name과 description이 주어지면 브랜드가 생성된다.")
+        @DisplayName("유효한 name과 description이 주어지면 올바른 값으로 저장된다.")
         @Test
         void createsBrand_whenRequestIsValid() {
             // arrange
-            BrandEntity saved = brandEntity();
             when(brandRepository.findByName(BRAND_NAME)).thenReturn(Optional.empty());
-            when(brandRepository.save(any(BrandEntity.class))).thenReturn(saved);
 
             // act
-            BrandEntity result = brandService.create(BRAND_NAME, BRAND_DESCRIPTION);
+            brandService.create(BRAND_NAME, BRAND_DESCRIPTION);
 
             // assert
+            ArgumentCaptor<BrandEntity> captor = ArgumentCaptor.forClass(BrandEntity.class);
+            verify(brandRepository).save(captor.capture());
             assertAll(
-                    () -> assertEquals(BRAND_NAME, result.getName()),
-                    () -> assertEquals(BRAND_DESCRIPTION, result.getDescription())
+                    () -> assertEquals(BRAND_NAME, captor.getValue().getName()),
+                    () -> assertEquals(BRAND_DESCRIPTION, captor.getValue().getDescription())
             );
-            verify(brandRepository, times(1)).save(any(BrandEntity.class));
         }
 
         @DisplayName("이미 존재하는 name이면 CONFLICT 예외가 발생하고 save는 호출되지 않는다.")
@@ -135,7 +135,7 @@ class BrandServiceTest {
     @Nested
     class Update {
 
-        @DisplayName("유효한 id와 name, description이 주어지면 브랜드가 수정된다.")
+        @DisplayName("유효한 id와 name, description이 주어지면 올바른 값으로 저장된다.")
         @Test
         void updatesBrand_whenRequestIsValid() {
             // arrange
@@ -144,17 +144,17 @@ class BrandServiceTest {
             BrandEntity existing = brandEntity();
             when(brandRepository.findById(BRAND_ID)).thenReturn(Optional.of(existing));
             when(brandRepository.findByName(newName)).thenReturn(Optional.empty());
-            when(brandRepository.save(existing)).thenReturn(existing);
 
             // act
-            BrandEntity result = brandService.update(BRAND_ID, newName, newDescription);
+            brandService.update(BRAND_ID, newName, newDescription);
 
             // assert
+            ArgumentCaptor<BrandEntity> captor = ArgumentCaptor.forClass(BrandEntity.class);
+            verify(brandRepository).save(captor.capture());
             assertAll(
-                    () -> assertEquals(newName, result.getName()),
-                    () -> assertEquals(newDescription, result.getDescription())
+                    () -> assertEquals(newName, captor.getValue().getName()),
+                    () -> assertEquals(newDescription, captor.getValue().getDescription())
             );
-            verify(brandRepository, times(1)).save(existing);
         }
 
         @DisplayName("존재하지 않는 id이면 NOT_FOUND 예외가 발생하고 save는 호출되지 않는다.")
@@ -190,21 +190,24 @@ class BrandServiceTest {
             verify(brandRepository, never()).save(any());
         }
 
-        @DisplayName("현재 브랜드와 동일한 name으로 수정하면 성공한다. (자기 자신과 중복 허용)")
+        @DisplayName("현재 브랜드와 동일한 name으로 수정하면 올바른 값으로 저장된다. (자기 자신과 중복 허용)")
         @Test
         void updatesBrand_whenNameIsSameAsCurrentBrand() {
             // arrange
             BrandEntity existing = brandEntity();
             when(brandRepository.findById(BRAND_ID)).thenReturn(Optional.of(existing));
             when(brandRepository.findByName(BRAND_NAME)).thenReturn(Optional.of(existing));
-            when(brandRepository.save(existing)).thenReturn(existing);
 
             // act
-            BrandEntity result = brandService.update(BRAND_ID, BRAND_NAME, "새로운 설명");
+            brandService.update(BRAND_ID, BRAND_NAME, "새로운 설명");
 
             // assert
-            assertEquals(BRAND_NAME, result.getName());
-            verify(brandRepository, times(1)).save(existing);
+            ArgumentCaptor<BrandEntity> captor = ArgumentCaptor.forClass(BrandEntity.class);
+            verify(brandRepository).save(captor.capture());
+            assertAll(
+                    () -> assertEquals(BRAND_NAME, captor.getValue().getName()),
+                    () -> assertEquals("새로운 설명", captor.getValue().getDescription())
+            );
         }
     }
 
