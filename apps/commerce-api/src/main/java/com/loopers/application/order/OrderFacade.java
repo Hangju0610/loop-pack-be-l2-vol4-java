@@ -41,8 +41,8 @@ public class OrderFacade {
 
         OrderEntity order = orderService.createOrder(userId, items);
 
-        Map<Long, Integer> productQuantities = commands.stream()
-                .collect(Collectors.toMap(OrderItemCommand::productId, OrderItemCommand::quantity));
+        Map<Long, Integer> productQuantities = items.stream()
+                .collect(Collectors.toMap(OrderItemEntity::getProductId, OrderItemEntity::getQuantity));
         inventoryService.deductAll(productQuantities);
 
         return OrderInfo.from(order);

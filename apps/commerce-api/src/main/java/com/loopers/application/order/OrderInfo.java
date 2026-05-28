@@ -22,7 +22,7 @@ public record OrderInfo(
             Integer quantity,
             Long subtotal
     ) {
-        static OrderItemInfo from(OrderItemEntity item) {
+        public static OrderItemInfo from(OrderItemEntity item) {
             return new OrderItemInfo(
                     item.getProductId(),
                     item.getProductName(),
