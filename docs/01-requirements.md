@@ -375,15 +375,13 @@ flowchart TD
     B -- 실패 --> C[400 Bad Request]
     B -- 통과 --> D{"상품 조회<br/>PRODUCT JOIN INVENTORY"}
     D -- 없는 상품 포함 --> E[404 Not Found]
-    D -- 성공 --> F{"재고 확인<br/>fast fail, 락 없음"}
-    F -- quantity 부족 --> G[400 Bad Request]
-    F -- 통과 --> H["Transactional 시작<br/>주문 생성 INSERT<br/>OrderEntity + OrderItemEntity 스냅샷"]
+    D -- 성공 --> H["@Transactional 시작<br/>주문 생성 INSERT<br/>OrderEntity + OrderItemEntity 스냅샷"]
     H --> I{"재고 차감<br/>SELECT FOR UPDATE<br/>productInventory.deduct"}
     I -- 재고 부족 --> J[Rollback → 400]
     I -- 성공 --> K[Commit → 201 Created]
 ```
 
-> - 2번 fast fail은 명백한 재고 부족을 주문 INSERT 이전에 조기 차단하는 역할
+> - 재고 확인은 `SELECT FOR UPDATE` 단일 지점에서만 수행한다 — fast-fail 사전 검증 미적용 ([ADR-024](./adr/024-order-creation-no-fast-fail.md))
 > - 실제 동시성 보장은 FOR UPDATE 락이 담당
 > - product_inventory 테이블에만 락이 걸리므로 상품 조회 성능에 영향 없음 ([ADR-006](./adr/006-product-inventory-table.md))
 
@@ -399,8 +397,8 @@ flowchart TD
 > 여러 트랜잭션이 서로 다른 순서로 락을 획득하면 데드락이 발생할 수 있다.
 > `WHERE product_id IN (...) ORDER BY product_id FOR UPDATE`로 락 획득 순서를 일관되게 유지한다.
 
-> **주문 상태** ([ADR-015](./adr/015-order-status-single-value.md))
-> 현재는 결제 기능이 없으므로 주문 생성 즉시 `COMPLETED` 단일 상태로 처리한다. 결제 기능 추가 시 상태 확장 예정.
+> **주문 상태** ([ADR-023](./adr/023-order-status-pending-confirmed.md))
+> 주문 생성 즉시 `PENDING` 상태로 생성된다. 향후 결제 흐름(`PENDING → PAID → COMPLETED`) 확장 예정.
 
 ### 어드민 인증
 
@@ -622,3 +620,6 @@ LikeFacade.removeLike(userId, productId)
 | ADR-016 | Admin 인증 — 테이블 미생성, 헤더 고정값 검증 | `adr/016-admin-auth-header.md` |
 | ADR-017 | 타인의 주문 접근 — 404 반환 정책 | `adr/017-order-ownership-check.md` |
 | ADR-018 | InventoryService 도입 — 재고 차감 책임 분리 | `adr/018-inventory-service-boundary.md` |
+| ADR-022 | LikeFacade 좋아요 등록·취소에 @Transactional 적용 | `adr/022-like-facade-transaction.md` |
+| ADR-023 | OrderStatus — PENDING 상태 확정 및 요구사항 문서 정정 | `adr/023-order-status-pending-confirmed.md` |
+| ADR-024 | 주문 생성 흐름 — fast-fail 사전 재고 검증 미적용 | `adr/024-order-creation-no-fast-fail.md` |
