@@ -12,12 +12,12 @@
 트랜잭션 외부 (읽기 전용)
   1. 상품 조회 (INVENTORY JOIN)
   2. 재고 fast-fail (product.quantity < 요청수량이면 400)
-  3. 쿠폰 사전 검증 (couponId 있을 때만): 소유권 + AVAILABLE 여부 확인
 
 @Transactional 시작
-  4. 쿠폰 유효성 검증 및 사용 처리 (PESSIMISTIC_WRITE 락)
-  5. 재고 차감 (SELECT ... FOR UPDATE, productId 오름차순)
-  6. 주문 엔티티 생성 및 저장 (ORDER INSERT)
+  3. 쿠폰 유효성 검증 및 사용 처리 (PESSIMISTIC_WRITE 락)
+     — 소유권·상태 검증은 락 획득 후 단일 지점에서만 수행
+  4. 재고 차감 (SELECT ... FOR UPDATE, productId 오름차순)
+  5. 주문 엔티티 생성 및 저장 (ORDER INSERT)
 Commit / 실패 시 전체 Rollback
 ```
 

@@ -253,24 +253,18 @@ sequenceDiagram
 
     Note over OrderFacade: 재고 fast-fail (락 없음) — product.quantity < 요청수량이면 400
 
-    opt couponId 있음
-        OrderFacade->>CouponApplicationService: getCoupon(couponId)
-        CouponApplicationService->>CouponRepository: findById(couponId)
-        CouponRepository-->>CouponApplicationService: CouponEntity (없으면 404)
-        CouponApplicationService-->>OrderFacade: CouponEntity
-        Note over OrderFacade: 소유권 검증 (isOwnedBy) → 불일치 시 403
-        Note over OrderFacade: resolveStatus(expiredAt) → EXPIRED 시 400
-        Note over OrderFacade: status == USED 시 400
-    end
-
     Note over OrderFacade,OrderRepository: ── @Transactional 시작 ──
 
     opt couponId 있음
-        Note over OrderFacade: ① 쿠폰 유효성 재검증 + 사용 처리 (PESSIMISTIC_WRITE, ADR-031)
+        Note over OrderFacade: ① 쿠폰 유효성 검증 + 사용 처리 (PESSIMISTIC_WRITE, ADR-031)
+        Note over OrderFacade: 검증은 락 획득 후 단일 지점에서만 수행 (이중 검증 없음)
         OrderFacade->>CouponApplicationService: useCoupon(couponId, userId)
         CouponApplicationService->>CouponRepository: findByIdForUpdate(couponId)
         Note over CouponRepository: SELECT ... FOR UPDATE (PESSIMISTIC_WRITE)
-        CouponRepository-->>CouponApplicationService: CouponEntity
+        CouponRepository-->>CouponApplicationService: CouponEntity (없으면 404)
+        Note over CouponApplicationService: isOwnedBy(userId) → 불일치 시 403
+        Note over CouponApplicationService: resolveStatus(expiredAt) → EXPIRED 시 400
+        Note over CouponApplicationService: status == USED 시 400
         CouponApplicationService->>CouponApplicationService: coupon.use() — AVAILABLE → USED
         CouponApplicationService-->>OrderFacade: discountAmount
     end

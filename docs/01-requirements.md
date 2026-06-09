@@ -412,18 +412,15 @@ flowchart TD
     D -- 없는 상품 포함 --> E[404 Not Found]
     D -- 성공 --> F{"재고 fast-fail<br/>product.quantity < 요청수량"}
     F -- 재고 부족 --> C2[400 Bad Request]
-    F -- 통과 --> G{"couponId 있음?"}
-    G -- 있음 --> G2{"쿠폰 사전 검증<br/>소유권 + AVAILABLE 여부"}
-    G2 -- 실패 --> C3[400 / 403 Bad Request]
-    G2 -- 통과 --> H
-    G -- 없음 --> H
-    H["@Transactional 시작<br/>①쿠폰 사용 처리 (PESSIMISTIC_WRITE)"] --> I
+    F -- 통과 --> H
+    H["@Transactional 시작<br/>①쿠폰 유효성 검증 + 사용 처리 (PESSIMISTIC_WRITE)<br/>소유권·상태 검증은 락 획득 후 단일 지점에서 수행"] --> I
     I{"②재고 차감<br/>SELECT FOR UPDATE<br/>productId 오름차순"} -- 재고 부족 --> J[Rollback → 400]
     I -- 성공 --> K["③주문 엔티티 생성 및 저장<br/>OrderEntity INSERT + 스냅샷"]
     K --> L[Commit → 201 Created]
 ```
 
 > - 트랜잭션 내 순서: 쿠폰 사용 → 재고 차감 → 주문 생성 ([ADR-032](./adr/032-order-creation-flow-with-coupon.md))
+> - 쿠폰 검증은 트랜잭션 내 락 획득 후 단일 지점에서만 수행 — 이중 검증 제거로 코드 단순화
 > - 쿠폰 없는 주문은 ①을 건너뛰고 ②→③ 수행
 > - 실패 확률이 높은 작업을 먼저 수행해 불필요한 INSERT를 방지
 > - 재고 차감 시 productId 오름차순 정렬로 데드락 방지 ([ADR-014](./adr/014-batch-query-and-lock-ordering.md))
