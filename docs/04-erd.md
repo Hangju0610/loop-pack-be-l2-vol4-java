@@ -79,7 +79,7 @@ erDiagram
 
     COUPONS {
         bigint id PK
-        bigint template_id
+        bigint coupon_template_id
         bigint user_id
         varchar status "AVAILABLE | USED | EXPIRED"
         datetime created_at

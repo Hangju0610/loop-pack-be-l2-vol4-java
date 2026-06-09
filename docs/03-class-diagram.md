@@ -82,7 +82,7 @@ classDiagram
     }
 
     class CouponEntity {
-        +Long templateId
+        +Long couponTemplateId
         +Long userId
         +CouponStatus status
         +use()
