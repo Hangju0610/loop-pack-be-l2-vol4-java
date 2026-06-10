@@ -32,9 +32,9 @@ Vol.1 에서 구현된 User 도메인을 기반으로, 아래 4개 도메인을 
 | Product.likeCount | DB 비정규화 컬럼 | SQL 원자적 증감으로 COUNT 쿼리 제거 ([ADR-003](./adr/003-like-count-query.md)) |
 | Product.quantity | INVENTORY JOIN 필드 | 상품 조회 시 재고 포함 반환 — 별도 재고 조회 불필요, 품절 여부 노출 |
 | Like → User / Product | `userId`, `productId` Long | 존재 여부 확인만 필요, JPA 관계 불필요 |
-| OrderItem → Order | `orderId Long` 참조 | JPA 관계 없음, 동일 Aggregate는 RepositoryImpl에서 조합 |
-| OrderItem → Product | `productId` + 스냅샷 컬럼 | 주문 시점 정보 보존 (요구사항 명시) |
 | Order → User | `userId` Long | 유저 변경과 주문 이력 분리 |
+| Order → OrderSnapshot | `snapshot TEXT` JSON 컬럼 | 주문 시점 상품 정보·금액·쿠폰 ID 보존 — ORDER_ITEM 테이블 대체 ([ADR-028](./adr/028-order-full-json-snapshot.md)) |
+| CouponEntity → CouponTemplateEntity | `couponTemplateId Long` 참조 | JPA 관계 없음, 조회 시 Repository에서 별도 조회 |
 
 > 상세 결정 근거는 `docs/v3/adr/` 참고
 
@@ -69,31 +69,42 @@ interfaces/api/
 ├── like/
 │   ├── LikeV1Controller
 │   └── LikeV1Dto
-└── order/
-    ├── OrderV1Controller         # Customer
-    ├── OrderAdminV1Controller    # Admin
-    └── OrderV1Dto
+├── order/
+│   ├── OrderV1Controller         # Customer
+│   ├── OrderAdminV1Controller    # Admin
+│   └── OrderV1Dto
+└── coupon/
+    ├── CouponV1Controller        # Customer
+    ├── CouponAdminV1Controller   # Admin
+    └── CouponV1Dto
 
 application/
 ├── brand/   BrandFacade, BrandInfo
 ├── product/ ProductFacade, ProductInfo
 ├── like/    LikeFacade, LikeInfo
-└── order/   OrderFacade, OrderInfo
+├── order/   OrderFacade, OrderInfo
+└── coupon/  CouponApplicationService, CouponInfo, CouponTemplateInfo
 
 domain/
 ├── brand/     BrandEntity, BrandRepository, BrandService
 ├── product/   ProductEntity, ProductRepository, ProductService
 ├── inventory/ InventoryEntity, InventoryRepository, InventoryService
 ├── like/      LikeEntity, LikeRepository, LikeService
-└── order/     OrderEntity, OrderItemEntity, OrderRepository, OrderService
+├── order/     OrderEntity, OrderSnapshot, OrderRepository, OrderService
+└── coupon/    CouponTemplateEntity, CouponEntity, CouponType, CouponStatus,
+               CouponTemplateRepository, CouponRepository
 
 infrastructure/
 ├── brand/     BrandJpaEntity, BrandJpaRepository, BrandRepositoryImpl
 ├── product/   ProductJpaEntity, ProductJpaRepository, ProductRepositoryImpl
 ├── inventory/ InventoryJpaEntity, InventoryJpaRepository, InventoryRepositoryImpl
 ├── like/      LikeJpaEntity, LikeJpaRepository, LikeRepositoryImpl
-└── order/     OrderJpaEntity, OrderItemJpaEntity,
-               OrderJpaRepository, OrderRepositoryImpl
+├── order/     OrderJpaEntity, OrderSnapshotConverter,
+│              OrderJpaRepository, OrderRepositoryImpl
+└── coupon/    CouponTemplateJpaEntity, CouponJpaEntity,
+               CouponTemplateMapper, CouponMapper,
+               CouponTemplateJpaRepository, CouponJpaRepository,
+               CouponTemplateRepositoryImpl, CouponRepositoryImpl
 ```
 
 ---
@@ -411,9 +422,7 @@ flowchart TD
     B -- 실패 --> C[400 Bad Request]
     B -- 통과 --> D{"상품 조회<br/>PRODUCT JOIN INVENTORY"}
     D -- 없는 상품 포함 --> E[404 Not Found]
-    D -- 성공 --> F{"재고 fast-fail<br/>product.quantity < 요청수량"}
-    F -- 재고 부족 --> C2[400 Bad Request]
-    F -- 통과 --> H
+    D -- 성공 --> H
     H["@Transactional 시작<br/>①쿠폰 유효성 검증 + 사용 처리 (PESSIMISTIC_WRITE)<br/>CouponEntity 락 → CouponTemplateEntity 조회 → 검증 → use() → save()"] --> I
     I{"②재고 차감<br/>SELECT FOR UPDATE<br/>productId 오름차순"} -- 재고 부족 --> J[Rollback → 400]
     I -- 성공 --> K["③주문 엔티티 생성 및 저장<br/>OrderEntity INSERT + 스냅샷"]
@@ -465,12 +474,12 @@ CouponApplicationService.deleteTemplate(couponTemplateId)
 
 ```
 useCoupon(couponId, userId, originalAmount)
-  1. CouponRepository.findByIdForUpdate(couponId)        → CouponEntity (PESSIMISTIC_WRITE, 없으면 404)
+  1. CouponRepository.findByIdWithLock(couponId)         → CouponEntity (PESSIMISTIC_WRITE, 없으면 404)
   2. coupon.isOwnedBy(userId)                            → 불일치 시 403
   3. CouponTemplateRepository.findById(couponTemplateId) → CouponTemplateEntity
   4. coupon.resolveStatus(template.expiredAt)            → EXPIRED 시 400
   5. coupon.status == USED                               → 400
-  6. originalAmount < template.minOrderAmount            → 400
+  6. template.validateMinOrderAmount(originalAmount)     → 400 (도메인 규칙, CouponTemplateEntity)
   7. discountAmount = template.calculateDiscount(originalAmount)
   8. coupon.use()                                        → AVAILABLE → USED (인메모리)
   9. CouponRepository.save(coupon)                       → DB 반영
@@ -483,13 +492,12 @@ useCoupon(couponId, userId, originalAmount)
 
 | 타입 | 계산식 |
 |---|---|
-| FIXED | `min(value, orderAmount)` — 주문금액보다 할인액이 클 수 없음 |
+| FIXED | `min(value, orderAmount)` — 할인액이 주문금액보다 크면 최종 금액은 0원 (할인액 = 주문금액) |
 | RATE | `orderAmount * value / 100` |
 
 - `minOrderAmount` 조건 있으면 `orderAmount < minOrderAmount` 시 `400 Bad Request`
 
-> - 재고 확인은 `SELECT FOR UPDATE` 단일 지점에서만 수행한다 — fast-fail 사전 검증 미적용 ([ADR-024](./adr/024-order-creation-no-fast-fail.md))
-> - 실제 동시성 보장은 FOR UPDATE 락이 담당
+> - 재고 확인은 `SELECT FOR UPDATE` 단일 지점에서만 수행한다 — 실제 동시성 보장은 FOR UPDATE 락이 담당
 > - product_inventory 테이블에만 락이 걸리므로 상품 조회 성능에 영향 없음 ([ADR-006](./adr/006-product-inventory-table.md))
 
 > **왜 이 순서인가?** ([ADR-007](./adr/007-order-creation-flow.md))
@@ -632,7 +640,8 @@ LikeFacade.removeLike(userId, productId)
 | ProductInventory | O | Product 삭제 시 연쇄 삭제 |
 | Like | O | Product/Brand 삭제 시 연쇄 삭제. 좋아요 재등록 시 Restore 패턴 적용 |
 | Order | O | |
-| OrderItem | O | Order 삭제 시 연쇄 삭제 (미구현, 향후 고려) |
+| CouponTemplate | O | |
+| Coupon | O | CouponTemplate 삭제 시 연쇄 삭제 |
 
 ### 조회 필터 적용 원칙
 
@@ -668,7 +677,9 @@ LikeFacade.removeLike(userId, productId)
 | `GET /api/v1/users/{userId}/likes` | |
 | `GET /api/v1/orders` | `startAt` / `endAt` 날짜 필터 함께 사용 — **날짜만 (YYYY-MM-DD)** ([ADR-010](./adr/010-order-list-query-spec.md)) |
 | `GET /api-admin/v1/orders` | |
-| `GET /api/v1/coupons` | |
+| `GET /api-admin/v1/coupons` | 쿠폰 템플릿 목록 |
+| `GET /api-admin/v1/coupons/{couponTemplateId}/issues` | 발급 내역 목록 |
+| `GET /api/v1/users/me/coupons` | 내 쿠폰 목록 |
 
 ### 예외
 
