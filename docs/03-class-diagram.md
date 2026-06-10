@@ -78,7 +78,7 @@ classDiagram
         +Long minOrderAmount
         +ZonedDateTime expiredAt
         +isExpired() boolean
-        +validateOrderAmount(orderAmount) void
+        +validateMinimumOrderAmount(orderAmount) void
         +calculateDiscount(orderAmount) Long
         +update(name, minOrderAmount, expiredAt)
     }
@@ -132,7 +132,7 @@ classDiagram
 | `OrderEntity` | `isOwnedBy(userId)` | `this.userId == userId` 소유권 검증 — 불일치 시 404 |
 | `CouponTemplateEntity` | `update(name, minOrderAmount, expiredAt)` | 수정 가능 필드 업데이트 — `type`·`value`는 변경 불가 |
 | `CouponTemplateEntity` | `isExpired()` | `ZonedDateTime.now() > expiredAt` 만료 여부 확인 |
-| `CouponTemplateEntity` | `validateOrderAmount(orderAmount)` | `minOrderAmount != null && orderAmount < minOrderAmount` 시 `CoreException` |
+| `CouponTemplateEntity` | `validateMinimumOrderAmount(orderAmount)` | `minOrderAmount != null && orderAmount < minOrderAmount` 시 `CoreException` |
 | `CouponTemplateEntity` | `calculateDiscount(orderAmount)` | FIXED: `min(value, orderAmount)` / RATE: `orderAmount * value / 100` |
 | `CouponEntity` | `use()` | `AVAILABLE → USED` 상태 전환, 그 외 CoreException |
 | `CouponEntity` | `resolveStatus(expiredAt)` | `AVAILABLE`이고 만료일 지났으면 `EXPIRED` 반환 (lazy, DB 미반영) (ADR-029) |

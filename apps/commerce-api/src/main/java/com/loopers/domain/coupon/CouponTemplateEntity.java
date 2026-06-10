@@ -65,7 +65,7 @@ public class CouponTemplateEntity extends BaseEntity {
         return ZonedDateTime.now().isAfter(expiredAt);
     }
 
-    public void validateOrderAmount(Long orderAmount) {
+    public void validateMinimumOrderAmount(Long orderAmount) {
         if (minOrderAmount != null && orderAmount < minOrderAmount) {
             throw new CoreException(ErrorType.BAD_REQUEST, "주문금액이 최소 주문금액보다 작습니다.");
         }

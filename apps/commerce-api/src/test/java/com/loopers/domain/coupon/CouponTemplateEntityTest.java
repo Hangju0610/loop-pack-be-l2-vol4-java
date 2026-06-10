@@ -144,7 +144,7 @@ public class CouponTemplateEntityTest {
             CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, null, FUTURE);
 
             // act & assert
-            assertDoesNotThrow(() -> template.validateOrderAmount(1000L));
+            assertDoesNotThrow(() -> template.validateMinimumOrderAmount(1000L));
         }
 
         @DisplayName("주문금액이 최소 주문금액 이상이면 검증을 통과한다.")
@@ -154,7 +154,7 @@ public class CouponTemplateEntityTest {
             CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, 10000L, FUTURE);
 
             // act & assert
-            assertDoesNotThrow(() -> template.validateOrderAmount(10000L));
+            assertDoesNotThrow(() -> template.validateMinimumOrderAmount(10000L));
         }
 
         @DisplayName("주문금액이 최소 주문금액 미만이면 예외가 발생한다.")
@@ -164,7 +164,7 @@ public class CouponTemplateEntityTest {
             CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, 10000L, FUTURE);
 
             // act & assert
-            assertThrows(CoreException.class, () -> template.validateOrderAmount(9999L));
+            assertThrows(CoreException.class, () -> template.validateMinimumOrderAmount(9999L));
         }
     }
 

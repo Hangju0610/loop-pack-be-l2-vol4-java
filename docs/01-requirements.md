@@ -479,7 +479,7 @@ useCoupon(couponId, userId, originalAmount)
   3. CouponTemplateRepository.findById(couponTemplateId) → CouponTemplateEntity
   4. coupon.resolveStatus(template.expiredAt)            → EXPIRED 시 400
   5. coupon.status == USED                               → 400
-  6. template.validateOrderAmount(originalAmount)        → 400 (도메인 규칙, CouponTemplateEntity)
+  6. template.validateMinimumOrderAmount(originalAmount) → 400 (도메인 규칙, CouponTemplateEntity)
   7. discountAmount = template.calculateDiscount(originalAmount)
   8. coupon.use()                                        → AVAILABLE → USED (인메모리)
   9. CouponRepository.save(coupon)                       → DB 반영

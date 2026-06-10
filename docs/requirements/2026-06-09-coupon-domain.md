@@ -121,7 +121,7 @@ CouponApplicationService.deleteTemplate(couponTemplateId)
 
 ```
 CouponApplicationService.useCoupon(couponId, userId, originalAmount)
-  1. CouponRepository.findByIdForUpdate(couponId)        → CouponEntity (PESSIMISTIC_WRITE, 없으면 404)
+  1. CouponRepository.findByIdWithLock(couponId)         → CouponEntity (PESSIMISTIC_WRITE, 없으면 404)
   2. coupon.isOwnedBy(userId)                            → 불일치 시 403
   3. CouponTemplateRepository.findById(couponTemplateId) → CouponTemplateEntity
   4. coupon.resolveStatus(template.expiredAt)            → EXPIRED 시 400

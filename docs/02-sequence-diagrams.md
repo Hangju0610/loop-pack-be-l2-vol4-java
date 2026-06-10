@@ -224,7 +224,7 @@ sequenceDiagram
 
 ### POST /api/v1/orders — 주문 생성 `🔐 User`
 
-> 흐름: 상품 조회(재고 포함) → 재고 fast-fail → 쿠폰 사전 검증(선택) → [쿠폰 사용 → 재고 차감 → 주문 생성]
+> 흐름: 상품 조회 → originalAmount 계산 → [쿠폰 사용 → 재고 차감 → 주문 생성]
 > 트랜잭션 내부 순서 변경: 실패 확률이 높은 쿠폰 사용을 먼저 수행해 불필요한 INSERT를 방지 (ADR-032)
 > 쿠폰 없는 주문은 쿠폰 관련 단계를 건너뜀.
 
@@ -251,7 +251,7 @@ sequenceDiagram
     ProductRepository-->>ProductService: List~ProductEntity~ (없는 상품 있으면 404)
     ProductService-->>OrderFacade: List~ProductEntity~
 
-    Note over OrderFacade: 재고 fast-fail (락 없음) — product.quantity < 요청수량이면 400
+    Note over OrderFacade: originalAmount = Σ(product.price × quantity)
 
     Note over OrderFacade,OrderRepository: ── @Transactional 시작 ──
 
@@ -259,7 +259,7 @@ sequenceDiagram
         Note over OrderFacade: ① 쿠폰 유효성 검증 + 사용 처리 (PESSIMISTIC_WRITE, ADR-031)
         Note over OrderFacade: 검증은 락 획득 후 단일 지점에서만 수행 (이중 검증 없음)
         OrderFacade->>CouponApplicationService: useCoupon(couponId, userId, originalAmount)
-        CouponApplicationService->>CouponRepository: findByIdForUpdate(couponId)
+        CouponApplicationService->>CouponRepository: findByIdWithLock(couponId)
         Note over CouponRepository: SELECT ... FOR UPDATE (PESSIMISTIC_WRITE)
         CouponRepository-->>CouponApplicationService: CouponEntity (없으면 404)
         Note over CouponApplicationService: isOwnedBy(userId) → 불일치 시 403
@@ -267,7 +267,7 @@ sequenceDiagram
         CouponTemplateRepository-->>CouponApplicationService: CouponTemplateEntity
         Note over CouponApplicationService: resolveStatus(template.expiredAt) → EXPIRED 시 400
         Note over CouponApplicationService: status == USED 시 400
-        Note over CouponApplicationService: originalAmount < template.minOrderAmount → 400
+        Note over CouponApplicationService: template.validateMinOrderAmount(originalAmount) → 400
         CouponApplicationService->>CouponApplicationService: discountAmount = template.calculateDiscount(originalAmount)
         CouponApplicationService->>CouponApplicationService: coupon.use() — AVAILABLE → USED (인메모리)
         CouponApplicationService->>CouponRepository: save(coupon)

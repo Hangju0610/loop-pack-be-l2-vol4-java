@@ -32,7 +32,7 @@ Optional<CouponJpaEntity> findByIdWithLock(@Param("id") Long id);
 ```
 OrderFacade.createOrder() [@Transactional]
   1. 상품 정보 조회
-  2. couponId != null → CouponApplicationService.useForOrder()
+  2. couponId != null → CouponApplicationService.useCoupon()
        - findByIdWithLock(couponId)  ← 비관적 락 획득
        - resolveStatus() 검증
        - isOwnedBy() 검증

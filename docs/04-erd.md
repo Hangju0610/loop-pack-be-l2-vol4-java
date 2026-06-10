@@ -81,7 +81,7 @@ erDiagram
         bigint id PK
         bigint coupon_template_id
         bigint user_id
-        varchar status "AVAILABLE | USED | EXPIRED"
+        varchar status "AVAILABLE | USED (EXPIRED는 lazy 계산, DB 미저장)"
         datetime created_at
         datetime updated_at
         datetime deleted_at
