@@ -79,7 +79,7 @@ public class CouponEntityTest {
         @Test
         void throwsException_whenCouponIsExpired() {
             // arrange
-            CouponEntity coupon = CouponEntity.ofExpired(VALID_TEMPLATE_ID, VALID_USER_ID);
+            CouponEntity coupon = CouponEntity.of(1L, VALID_TEMPLATE_ID, VALID_USER_ID, CouponStatus.EXPIRED, null, null, null);
 
             // act & assert
             assertThrows(CoreException.class, coupon::use);

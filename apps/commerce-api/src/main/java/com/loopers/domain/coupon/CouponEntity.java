@@ -26,14 +26,6 @@ public class CouponEntity extends BaseEntity {
         this.status = CouponStatus.AVAILABLE;
     }
 
-    public static CouponEntity ofExpired(Long couponTemplateId, Long userId) {
-        CouponEntity entity = new CouponEntity();
-        entity.couponTemplateId = couponTemplateId;
-        entity.userId = userId;
-        entity.status = CouponStatus.EXPIRED;
-        return entity;
-    }
-
     public static CouponEntity of(Long id, Long couponTemplateId, Long userId, CouponStatus status,
             ZonedDateTime createdAt, ZonedDateTime updatedAt, ZonedDateTime deletedAt) {
         CouponEntity entity = new CouponEntity();

@@ -20,23 +20,13 @@ public class CouponTemplateEntity extends BaseEntity {
         validateName(name);
         validateType(type);
         validateValue(type, value);
-        validateMinOrderAmountValue(minOrderAmount);
+        validateMinOrderAmount(minOrderAmount);
         validateExpiredAt(expiredAt);
         this.name = name;
         this.type = type;
         this.value = value;
         this.minOrderAmount = minOrderAmount;
         this.expiredAt = expiredAt;
-    }
-
-    public static CouponTemplateEntity ofExpired(String name, CouponType type, Long value, Long minOrderAmount, ZonedDateTime expiredAt) {
-        CouponTemplateEntity entity = new CouponTemplateEntity();
-        entity.name = name;
-        entity.type = type;
-        entity.value = value;
-        entity.minOrderAmount = minOrderAmount;
-        entity.expiredAt = expiredAt;
-        return entity;
     }
 
     public static CouponTemplateEntity of(Long id, String name, CouponType type, Long value, Long minOrderAmount,
@@ -75,7 +65,7 @@ public class CouponTemplateEntity extends BaseEntity {
         return ZonedDateTime.now().isAfter(expiredAt);
     }
 
-    public void validateMinOrderAmount(Long orderAmount) {
+    public void validateOrderAmount(Long orderAmount) {
         if (minOrderAmount != null && orderAmount < minOrderAmount) {
             throw new CoreException(ErrorType.BAD_REQUEST, "주문금액이 최소 주문금액보다 작습니다.");
         }
@@ -120,7 +110,7 @@ public class CouponTemplateEntity extends BaseEntity {
         }
     }
 
-    private void validateMinOrderAmountValue(Long minOrderAmount) {
+    private void validateMinOrderAmount(Long minOrderAmount) {
         if (minOrderAmount != null && minOrderAmount < 0) {
             throw new CoreException(ErrorType.BAD_REQUEST, "최소 주문금액은 0 이상이어야 합니다.");
         }

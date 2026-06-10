@@ -126,7 +126,7 @@ public class CouponTemplateEntityTest {
         @Test
         void returnsTrue_whenExpiredAtIsInPast() {
             // arrange
-            CouponTemplateEntity template = CouponTemplateEntity.ofExpired(VALID_NAME, VALID_TYPE, VALID_VALUE, null, PAST);
+            CouponTemplateEntity template = CouponTemplateEntity.of(1L, VALID_NAME, VALID_TYPE, VALID_VALUE, null, PAST, null, null, null);
 
             // act & assert
             assertTrue(template.isExpired());
@@ -144,7 +144,7 @@ public class CouponTemplateEntityTest {
             CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, null, FUTURE);
 
             // act & assert
-            assertDoesNotThrow(() -> template.validateMinOrderAmount(1000L));
+            assertDoesNotThrow(() -> template.validateOrderAmount(1000L));
         }
 
         @DisplayName("주문금액이 최소 주문금액 이상이면 검증을 통과한다.")
@@ -154,7 +154,7 @@ public class CouponTemplateEntityTest {
             CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, 10000L, FUTURE);
 
             // act & assert
-            assertDoesNotThrow(() -> template.validateMinOrderAmount(10000L));
+            assertDoesNotThrow(() -> template.validateOrderAmount(10000L));
         }
 
         @DisplayName("주문금액이 최소 주문금액 미만이면 예외가 발생한다.")
@@ -164,7 +164,7 @@ public class CouponTemplateEntityTest {
             CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, 10000L, FUTURE);
 
             // act & assert
-            assertThrows(CoreException.class, () -> template.validateMinOrderAmount(9999L));
+            assertThrows(CoreException.class, () -> template.validateOrderAmount(9999L));
         }
     }
 
