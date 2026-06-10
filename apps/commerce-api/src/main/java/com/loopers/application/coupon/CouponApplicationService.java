@@ -2,6 +2,7 @@ package com.loopers.application.coupon;
 
 import com.loopers.domain.coupon.CouponEntity;
 import com.loopers.domain.coupon.CouponRepository;
+import com.loopers.domain.coupon.CouponStatus;
 import com.loopers.domain.coupon.CouponTemplateEntity;
 import com.loopers.domain.coupon.CouponTemplateRepository;
 import com.loopers.domain.coupon.CouponType;
@@ -30,9 +31,7 @@ public class CouponApplicationService {
 
     @Transactional(readOnly = true)
     public CouponTemplateInfo getTemplate(Long couponTemplateId) {
-        return couponTemplateRepository.findById(couponTemplateId)
-                .map(CouponTemplateInfo::from)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
+        return CouponTemplateInfo.from(findTemplateOrThrow(couponTemplateId));
     }
 
     @Transactional(readOnly = true)
@@ -42,16 +41,14 @@ public class CouponApplicationService {
 
     @Transactional
     public void updateTemplate(Long couponTemplateId, String name, Long minOrderAmount, ZonedDateTime expiredAt) {
-        CouponTemplateEntity template = couponTemplateRepository.findById(couponTemplateId)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
+        CouponTemplateEntity template = findTemplateOrThrow(couponTemplateId);
         template.update(name, minOrderAmount, expiredAt);
         couponTemplateRepository.save(template);
     }
 
     @Transactional
     public void deleteTemplate(Long couponTemplateId) {
-        CouponTemplateEntity template = couponTemplateRepository.findById(couponTemplateId)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
+        CouponTemplateEntity template = findTemplateOrThrow(couponTemplateId);
         template.delete();
         couponTemplateRepository.save(template);
         couponRepository.softDeleteAllByTemplateId(couponTemplateId);
@@ -59,16 +56,14 @@ public class CouponApplicationService {
 
     @Transactional(readOnly = true)
     public Page<CouponInfo> getTemplateIssues(Long couponTemplateId, Pageable pageable) {
-        CouponTemplateEntity template = couponTemplateRepository.findById(couponTemplateId)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
+        CouponTemplateEntity template = findTemplateOrThrow(couponTemplateId);
         return couponRepository.findAllByCouponTemplateId(couponTemplateId, pageable)
                 .map(coupon -> CouponInfo.from(coupon, template));
     }
 
     @Transactional
     public CouponInfo issueCoupon(Long userId, Long couponTemplateId) {
-        CouponTemplateEntity template = couponTemplateRepository.findById(couponTemplateId)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
+        CouponTemplateEntity template = findTemplateOrThrow(couponTemplateId);
         if (template.isExpired()) {
             throw new CoreException(ErrorType.BAD_REQUEST, "만료된 쿠폰 템플릿입니다.");
         }
@@ -79,11 +74,7 @@ public class CouponApplicationService {
     @Transactional(readOnly = true)
     public Page<CouponInfo> getMyCoupons(Long userId, Pageable pageable) {
         return couponRepository.findAllByUserId(userId, pageable)
-                .map(coupon -> {
-                    CouponTemplateEntity template = couponTemplateRepository.findById(coupon.getCouponTemplateId())
-                            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
-                    return CouponInfo.from(coupon, template);
-                });
+                .map(coupon -> CouponInfo.from(coupon, findTemplateOrThrow(coupon.getCouponTemplateId())));
     }
 
     @Transactional
@@ -93,9 +84,8 @@ public class CouponApplicationService {
         if (!coupon.isOwnedBy(userId)) {
             throw new CoreException(ErrorType.FORBIDDEN, "본인의 쿠폰만 사용할 수 있습니다.");
         }
-        CouponTemplateEntity template = couponTemplateRepository.findById(coupon.getCouponTemplateId())
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
-        if (coupon.resolveStatus(template.getExpiredAt()) == com.loopers.domain.coupon.CouponStatus.EXPIRED) {
+        CouponTemplateEntity template = findTemplateOrThrow(coupon.getCouponTemplateId());
+        if (coupon.resolveStatus(template.getExpiredAt()) == CouponStatus.EXPIRED) {
             throw new CoreException(ErrorType.BAD_REQUEST, "만료된 쿠폰입니다.");
         }
         template.validateMinimumOrderAmount(originalAmount);
@@ -103,5 +93,10 @@ public class CouponApplicationService {
         Long discountAmount = template.calculateDiscount(originalAmount);
         couponRepository.save(coupon);
         return discountAmount;
+    }
+
+    private CouponTemplateEntity findTemplateOrThrow(Long couponTemplateId) {
+        return couponTemplateRepository.findById(couponTemplateId)
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰 템플릿을 찾을 수 없습니다."));
     }
 }
