@@ -2,7 +2,6 @@ package com.loopers.application.order;
 
 import com.loopers.application.coupon.CouponApplicationService;
 import com.loopers.domain.inventory.InventoryService;
-import com.loopers.domain.order.OrderEntity;
 import com.loopers.domain.order.OrderService;
 import com.loopers.domain.order.OrderSnapshot;
 import com.loopers.domain.order.OrderSnapshotItem;
@@ -39,21 +38,17 @@ public class OrderApplicationService {
                 .toList();
 
         long originalAmount = snapshotItems.stream().mapToLong(OrderSnapshotItem::subtotal).sum();
-
-        long discountAmount = 0L;
-        if (couponId != null) {
-            discountAmount = couponApplicationService.useCoupon(couponId, userId, originalAmount);
-        }
+        long discountAmount = couponId != null
+                ? couponApplicationService.useCoupon(couponId, userId, originalAmount)
+                : 0L;
 
         Map<Long, Integer> productQuantities = commands.stream()
                 .collect(Collectors.toMap(OrderItemCommand::productId, OrderItemCommand::quantity));
         inventoryService.deductAll(productQuantities);
 
-        long finalAmount = originalAmount - discountAmount;
-        OrderSnapshot snapshot = new OrderSnapshot(snapshotItems, originalAmount, discountAmount, finalAmount, couponId);
-        OrderEntity order = orderService.createOrder(userId, snapshot);
-
-        return OrderInfo.from(order);
+        OrderSnapshot snapshot = new OrderSnapshot(snapshotItems, originalAmount, discountAmount,
+                originalAmount - discountAmount, couponId);
+        return OrderInfo.from(orderService.createOrder(userId, snapshot));
     }
 
     public OrderInfo getOrder(Long authUserId, Long orderId) {
