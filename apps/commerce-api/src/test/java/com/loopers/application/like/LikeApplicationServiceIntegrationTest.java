@@ -352,5 +352,77 @@ class LikeApplicationServiceIntegrationTest {
             assertThat(productApplicationService.getProduct(product.id()).likeCount())
                     .isEqualTo((long) threadCount - successCount.get());
         }
+
+        @DisplayName("10명이 동시에 좋아요/좋아요 취소를 요청해도 likeCount가 정확히 반영된다.")
+        @Test
+        void likeCountIsAccurate_whenConcurrentLikesAndUnlikesRequested() throws InterruptedException {
+            // arrange: 10명 중 5명은 미리 좋아요, 5명은 좋아요 없음
+            int totalThreads = 10;
+            int prelikedCount = 5;
+
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 10);
+
+            UserInfo[] usersToAdd = new UserInfo[totalThreads - prelikedCount];
+            for (int i = 0; i < usersToAdd.length; i++) {
+                usersToAdd[i] = createUser("adduser" + i);
+            }
+
+            UserInfo[] usersToRemove = new UserInfo[prelikedCount];
+            for (int i = 0; i < prelikedCount; i++) {
+                usersToRemove[i] = createUser("removeuser" + i);
+                likeApplicationService.addLike(usersToRemove[i].id(), product.id());
+            }
+
+            // 초기 likeCount = prelikedCount
+            long initialLikeCount = productApplicationService.getProduct(product.id()).likeCount();
+
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch doneLatch = new CountDownLatch(totalThreads);
+            AtomicInteger addSuccessCount = new AtomicInteger(0);
+            AtomicInteger removeSuccessCount = new AtomicInteger(0);
+
+            ExecutorService executor = Executors.newFixedThreadPool(totalThreads);
+
+            // 5명: addLike
+            for (int i = 0; i < usersToAdd.length; i++) {
+                final int idx = i;
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        likeApplicationService.addLike(usersToAdd[idx].id(), product.id());
+                        addSuccessCount.incrementAndGet();
+                    } catch (Exception ignored) {
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            // 5명: removeLike
+            for (int i = 0; i < prelikedCount; i++) {
+                final int idx = i;
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        likeApplicationService.removeLike(usersToRemove[idx].id(), product.id());
+                        removeSuccessCount.incrementAndGet();
+                    } catch (Exception ignored) {
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            // act
+            startLatch.countDown();
+            doneLatch.await();
+            executor.shutdown();
+
+            // assert: likeCount = 초기값 + 추가 성공 - 취소 성공 (lost update 없음)
+            long expectedLikeCount = initialLikeCount + addSuccessCount.get() - removeSuccessCount.get();
+            assertThat(productApplicationService.getProduct(product.id()).likeCount())
+                    .isEqualTo(expectedLikeCount);
+        }
     }
 }
