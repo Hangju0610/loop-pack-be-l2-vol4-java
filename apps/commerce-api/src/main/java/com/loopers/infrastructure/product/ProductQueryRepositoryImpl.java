@@ -75,7 +75,7 @@ public class ProductQueryRepositoryImpl implements ProductQueryRepository {
                 .map(order -> switch (order.getProperty()) {
                     case "price" -> order.isAscending() ? product.price.asc() : product.price.desc();
                     case "likeCount" -> order.isAscending() ? product.likeCount.asc() : product.likeCount.desc();
-                    default -> order.isAscending() ? product.createdAt.asc() : product.createdAt.desc();
+                    default -> order.isAscending() ? product.id.asc() : product.id.desc();
                 })
                 .toArray(OrderSpecifier[]::new);
     }
