@@ -62,8 +62,8 @@ public class ProductQueryRepositoryImpl implements ProductQueryRepository {
         Long total = queryFactory
                 .select(product.count())
                 .from(product)
-                .join(brand).on(brand.id.eq(product.brandId))
-                .join(inventory).on(inventory.productId.eq(product.id))
+                // .join(brand).on(brand.id.eq(product.brandId))
+                // .join(inventory).on(inventory.productId.eq(product.id))
                 .where(where)
                 .fetchOne();
 
