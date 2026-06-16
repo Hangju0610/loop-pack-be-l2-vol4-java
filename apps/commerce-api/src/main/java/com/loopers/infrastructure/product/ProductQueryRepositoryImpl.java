@@ -30,9 +30,9 @@ public class ProductQueryRepositoryImpl implements ProductQueryRepository {
     @Override
     public Page<ProductInfo> findAllWithDetails(Long brandId, Pageable pageable) {
         BooleanBuilder where = new BooleanBuilder()
-                .and(product.deletedAt.isNull())
-                .and(brand.deletedAt.isNull())
-                .and(inventory.deletedAt.isNull());
+                .and(product.deletedAt.isNull());
+                // .and(brand.deletedAt.isNull())
+                // .and(inventory.deletedAt.isNull());
 
         if (brandId != null) {
             where.and(product.brandId.eq(brandId));
