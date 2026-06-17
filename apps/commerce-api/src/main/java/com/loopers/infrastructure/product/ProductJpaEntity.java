@@ -13,6 +13,7 @@ import java.time.ZonedDateTime;
 @Table(
     name = "product",
     indexes = {
+        @Index(name = "idx_product_deleted_at",        columnList = "deleted_at"),
         @Index(name = "idx_product_price",             columnList = "price"),
         @Index(name = "idx_product_like_count",        columnList = "like_count"),
         @Index(name = "idx_product_brand_price",       columnList = "brand_id, price"),
