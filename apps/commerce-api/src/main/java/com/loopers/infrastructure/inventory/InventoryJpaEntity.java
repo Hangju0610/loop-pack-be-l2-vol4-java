@@ -9,7 +9,11 @@ import java.time.ZonedDateTime;
 @Entity
 @Table(
         name = "inventory",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"product_id"}, name="unique_product_id")
+        uniqueConstraints = @UniqueConstraint(columnNames = {"product_id"}, name="unique_product_id"),
+        indexes = {
+            @Index(name = "idx_inventory_product_id_deleted_at", columnList = "product_id, deleted_at"),
+        }
+
 )
 @Getter
 public class InventoryJpaEntity extends BaseJpaEntity {
