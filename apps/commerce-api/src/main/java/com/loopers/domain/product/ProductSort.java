@@ -7,7 +7,7 @@ import org.springframework.data.domain.Sort;
 
 @RequiredArgsConstructor
 public enum ProductSort {
-    LATEST(Sort.by(Sort.Direction.DESC, "createdAt")),
+    LATEST(Sort.by(Sort.Direction.DESC, "id")),
     PRICE_ASC(Sort.by(Sort.Direction.ASC, "price")),
     PRICE_DESC(Sort.by(Sort.Direction.DESC, "price")),
     LIKE_ASC(Sort.by(Sort.Direction.ASC, "likeCount")),

@@ -1,10 +1,7 @@
 package com.loopers.infrastructure.inventory;
 
 import com.loopers.infrastructure.BaseJpaEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 import lombok.Getter;
 
 import java.time.ZonedDateTime;
@@ -12,7 +9,11 @@ import java.time.ZonedDateTime;
 @Entity
 @Table(
         name = "inventory",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"product_id"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"product_id"}, name="unique_product_id"),
+        indexes = {
+            @Index(name = "idx_inventory_product_id_deleted_at", columnList = "product_id, deleted_at"),
+        }
+
 )
 @Getter
 public class InventoryJpaEntity extends BaseJpaEntity {
