@@ -21,6 +21,7 @@ public class PaymentEntity extends BaseEntity {
     public PaymentEntity(Long orderId, Long userId, CardType cardType, String cardNo, Long amount) {
         if (orderId == null) throw new CoreException(ErrorType.BAD_REQUEST, "주문 ID는 필수입니다.");
         if (userId == null) throw new CoreException(ErrorType.BAD_REQUEST, "유저 ID는 필수입니다.");
+        if (cardType == null) throw new CoreException(ErrorType.BAD_REQUEST, "카드 종류는 필수입니다.");
         if (cardNo == null || cardNo.isBlank()) throw new CoreException(ErrorType.BAD_REQUEST, "카드 번호는 필수입니다.");
         if (amount == null || amount <= 0) throw new CoreException(ErrorType.BAD_REQUEST, "결제 금액은 0보다 커야 합니다.");
         this.orderId = orderId;

@@ -39,6 +39,13 @@ public class PaymentEntityTest {
                 () -> new PaymentEntity(ORDER_ID, null, CardType.SAMSUNG, CARD_NO, 10000L));
         }
 
+        @DisplayName("cardType이 null이면 예외가 발생한다.")
+        @Test
+        void throwsException_whenCardTypeIsNull() {
+            assertThrows(CoreException.class,
+                () -> new PaymentEntity(ORDER_ID, USER_ID, null, CARD_NO, 10000L));
+        }
+
         @DisplayName("cardNo가 빈 문자열이면 예외가 발생한다.")
         @Test
         void throwsException_whenCardNoIsBlank() {
