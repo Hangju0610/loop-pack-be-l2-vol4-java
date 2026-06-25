@@ -11,18 +11,18 @@ import org.springframework.data.repository.query.Param;
 import java.time.ZonedDateTime;
 import java.util.Optional;
 
-public interface OrderJpaRepository extends JpaRepository<OrderJpaEntity, Long> {
-    Optional<OrderJpaEntity> findByIdAndDeletedAtIsNull(Long id);
+public interface OrderJpaRepository extends JpaRepository<OrderJpaEntity, String> {
+    Optional<OrderJpaEntity> findByIdAndDeletedAtIsNull(String id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM OrderJpaEntity o WHERE o.id = :id AND o.deletedAt IS NULL")
-    Optional<OrderJpaEntity> findByIdWithLock(@Param("id") Long id);
+    Optional<OrderJpaEntity> findByIdWithLock(@Param("id") String id);
 
     @Query("SELECT o FROM OrderJpaEntity o WHERE o.userId = :userId AND o.deletedAt IS NULL " +
            "AND (:startAt IS NULL OR o.createdAt >= :startAt) " +
            "AND (:endAt IS NULL OR o.createdAt <= :endAt)")
     Page<OrderJpaEntity> findAllByUserIdWithDateRange(
-            @Param("userId") Long userId,
+            @Param("userId") String userId,
             @Param("startAt") ZonedDateTime startAt,
             @Param("endAt") ZonedDateTime endAt,
             Pageable pageable);

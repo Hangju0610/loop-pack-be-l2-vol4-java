@@ -12,11 +12,11 @@ import java.time.ZonedDateTime;
 @Getter
 public class PaymentJpaEntity extends BaseJpaEntity {
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
+    @Column(name = "ref_order_id", nullable = false)
+    private String orderId;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @Column(name = "ref_user_id", nullable = false)
+    private String userId;
 
     @Column(name = "transaction_key")
     private String transactionKey;
@@ -40,7 +40,12 @@ public class PaymentJpaEntity extends BaseJpaEntity {
 
     protected PaymentJpaEntity() {}
 
-    PaymentJpaEntity(Long id, Long orderId, Long userId, String transactionKey,
+    @Override
+    protected String idCode() {
+        return "PAY";
+    }
+
+    PaymentJpaEntity(String id, String orderId, String userId, String transactionKey,
             CardType cardType, String cardNo, Long amount,
             PaymentStatus status, String failureReason, ZonedDateTime deletedAt) {
         super(id, deletedAt);
