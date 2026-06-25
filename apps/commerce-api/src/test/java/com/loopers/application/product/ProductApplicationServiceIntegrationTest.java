@@ -11,6 +11,7 @@ import com.loopers.infrastructure.like.LikeJpaRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -53,10 +54,15 @@ class ProductApplicationServiceIntegrationTest {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private RedisCleanUp redisCleanUp;
+
     @AfterEach
     void tearDown() {
         Mockito.reset(inventoryRepository, likeRepository);
         databaseCleanUp.truncateAllTables();
+        // 상품 목록 page-0 캐시(Redis)가 테스트 간 공유되지 않도록 정리
+        redisCleanUp.truncateAll();
     }
 
     // ─────────────────────────────────────────────

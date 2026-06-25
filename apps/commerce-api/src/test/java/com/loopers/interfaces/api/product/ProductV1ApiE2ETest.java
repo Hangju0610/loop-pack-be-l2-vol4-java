@@ -9,6 +9,7 @@ import com.loopers.application.user.UserApplicationService;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResult;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +37,7 @@ class ProductV1ApiE2ETest {
     private final LikeApplicationService likeApplicationService;
     private final UserApplicationService userApplicationService;
     private final DatabaseCleanUp databaseCleanUp;
+    private final RedisCleanUp redisCleanUp;
 
     @Autowired
     ProductV1ApiE2ETest(
@@ -44,7 +46,8 @@ class ProductV1ApiE2ETest {
             ProductApplicationService productApplicationService,
             LikeApplicationService likeApplicationService,
             UserApplicationService userApplicationService,
-            DatabaseCleanUp databaseCleanUp
+            DatabaseCleanUp databaseCleanUp,
+            RedisCleanUp redisCleanUp
     ) {
         this.testRestTemplate = testRestTemplate;
         this.brandApplicationService = brandApplicationService;
@@ -52,11 +55,14 @@ class ProductV1ApiE2ETest {
         this.likeApplicationService = likeApplicationService;
         this.userApplicationService = userApplicationService;
         this.databaseCleanUp = databaseCleanUp;
+        this.redisCleanUp = redisCleanUp;
     }
 
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        // 상품 목록 page-0 캐시(Redis)가 테스트 간 공유되지 않도록 정리
+        redisCleanUp.truncateAll();
     }
 
     private HttpHeaders adminHeaders() {
