@@ -2,7 +2,6 @@ package com.loopers.application.coupon;
 
 import com.loopers.domain.coupon.CouponEntity;
 import com.loopers.domain.coupon.CouponRepository;
-import com.loopers.domain.coupon.CouponStatus;
 import com.loopers.domain.coupon.CouponTemplateEntity;
 import com.loopers.domain.coupon.CouponTemplateRepository;
 import com.loopers.domain.coupon.CouponType;
@@ -78,21 +77,34 @@ public class CouponApplicationService {
     }
 
     @Transactional
-    public Long useCoupon(String couponId, String userId, Long originalAmount) {
-        CouponEntity coupon = couponRepository.findByIdWithLock(couponId)
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰을 찾을 수 없습니다."));
-        if (!coupon.isOwnedBy(userId)) {
-            throw new CoreException(ErrorType.FORBIDDEN, "본인의 쿠폰만 사용할 수 있습니다.");
-        }
+    public Long reserveCoupon(String couponId, String userId, Long originalAmount) {
+        CouponEntity coupon = findCouponWithLockOrThrow(couponId);
         CouponTemplateEntity template = findTemplateOrThrow(coupon.getCouponTemplateId());
-        if (coupon.resolveStatus(template.getExpiredAt()) == CouponStatus.EXPIRED) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "만료된 쿠폰입니다.");
-        }
+        coupon.validateOwnedBy(userId);
+        coupon.validateNotExpired(template.getExpiredAt());
         template.validateMinimumOrderAmount(originalAmount);
-        coupon.use();
-        Long discountAmount = template.calculateDiscount(originalAmount);
+        coupon.reserve();
         couponRepository.save(coupon);
-        return discountAmount;
+        return template.calculateDiscount(originalAmount);
+    }
+
+    @Transactional
+    public void confirmCoupon(String couponId) {
+        CouponEntity coupon = findCouponWithLockOrThrow(couponId);
+        coupon.confirm();
+        couponRepository.save(coupon);
+    }
+
+    @Transactional
+    public void releaseCoupon(String couponId) {
+        CouponEntity coupon = findCouponWithLockOrThrow(couponId);
+        coupon.release();
+        couponRepository.save(coupon);
+    }
+
+    private CouponEntity findCouponWithLockOrThrow(String couponId) {
+        return couponRepository.findByIdWithLock(couponId)
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "쿠폰을 찾을 수 없습니다."));
     }
 
     private CouponTemplateEntity findTemplateOrThrow(String couponTemplateId) {

@@ -44,7 +44,7 @@ public class OrderApplicationService {
 
         long originalAmount = snapshotItems.stream().mapToLong(OrderSnapshotItem::subtotal).sum();
         long discountAmount = couponId != null
-                ? couponApplicationService.useCoupon(couponId, userId, originalAmount)
+                ? couponApplicationService.reserveCoupon(couponId, userId, originalAmount)
                 : 0L;
 
         Map<String, Integer> productQuantities = commands.stream()
