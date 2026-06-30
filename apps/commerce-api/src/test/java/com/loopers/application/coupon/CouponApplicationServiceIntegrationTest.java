@@ -413,39 +413,39 @@ class CouponApplicationServiceIntegrationTest {
     }
 
     // ─────────────────────────────────────────────
-    // useCoupon — 쿠폰 사용 처리
+    // reserveCoupon — 쿠폰 예약 처리
     // ─────────────────────────────────────────────
 
-    @DisplayName("쿠폰 사용 처리")
+    @DisplayName("쿠폰 예약 처리")
     @Nested
-    class UseCoupon {
+    class ReserveCoupon {
 
-        @DisplayName("[ECP] 유효한 쿠폰 사용 시 할인 금액을 반환하고 상태가 USED로 변경된다.")
+        @DisplayName("[ECP] 유효한 쿠폰 예약 시 할인 금액을 반환하고 상태가 RESERVED로 변경된다.")
         @Test
-        void returnsDiscountAmount_andStatusChangesToUsed_whenCouponIsValid() {
+        void returnsDiscountAmount_andStatusChangesToReserved_whenCouponIsValid() {
             // arrange
             UserInfo user = createUser("user1");
             CouponTemplateInfo template = createTemplate("10% 할인", CouponType.RATE, 10L, null);
             CouponInfo issued = couponApplicationService.issueCoupon(user.id(), template.templateId());
 
             // act
-            Long discount = couponApplicationService.useCoupon(issued.couponId(), user.id(), 20000L);
+            Long discount = couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 20000L);
 
             // assert
             assertEquals(2000L, discount);
             Page<CouponInfo> myCoupons = couponApplicationService.getMyCoupons(user.id(), PageRequest.of(0, 20));
-            assertEquals(CouponStatus.USED, myCoupons.getContent().get(0).status());
+            assertEquals(CouponStatus.RESERVED, myCoupons.getContent().get(0).status());
         }
 
-        @DisplayName("[ECP] 존재하지 않는 couponId로 사용 시 NOT_FOUND 예외가 발생한다.")
+        @DisplayName("[ECP] 존재하지 않는 couponId로 예약 시 NOT_FOUND 예외가 발생한다.")
         @Test
         void throwsNotFoundException_whenCouponNotFound() {
             CoreException ex = assertThrows(CoreException.class,
-                    () -> couponApplicationService.useCoupon("999", "1", 10000L));
+                    () -> couponApplicationService.reserveCoupon("999", "1", 10000L));
             assertEquals(ErrorType.NOT_FOUND, ex.getErrorType());
         }
 
-        @DisplayName("[ECP] 타인의 쿠폰 사용 시 FORBIDDEN 예외가 발생한다.")
+        @DisplayName("[ECP] 타인의 쿠폰 예약 시 FORBIDDEN 예외가 발생한다.")
         @Test
         void throwsForbiddenException_whenCouponIsNotOwned() {
             // arrange
@@ -456,26 +456,26 @@ class CouponApplicationServiceIntegrationTest {
 
             // act & assert
             CoreException ex = assertThrows(CoreException.class,
-                    () -> couponApplicationService.useCoupon(issued.couponId(), other.id(), 10000L));
+                    () -> couponApplicationService.reserveCoupon(issued.couponId(), other.id(), 10000L));
             assertEquals(ErrorType.FORBIDDEN, ex.getErrorType());
         }
 
-        @DisplayName("[State Transition] 이미 사용된 쿠폰 재사용 시 BAD_REQUEST 예외가 발생한다.")
+        @DisplayName("[State Transition] 이미 예약된 쿠폰 재예약 시 BAD_REQUEST 예외가 발생한다.")
         @Test
-        void throwsBadRequestException_whenCouponIsAlreadyUsed() {
+        void throwsBadRequestException_whenCouponIsAlreadyReserved() {
             // arrange
             UserInfo user = createUser("user1");
             CouponTemplateInfo template = createTemplate("정액 쿠폰", CouponType.FIXED, 1000L, null);
             CouponInfo issued = couponApplicationService.issueCoupon(user.id(), template.templateId());
-            couponApplicationService.useCoupon(issued.couponId(), user.id(), 10000L);
+            couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 10000L);
 
             // act & assert
             CoreException ex = assertThrows(CoreException.class,
-                    () -> couponApplicationService.useCoupon(issued.couponId(), user.id(), 10000L));
+                    () -> couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 10000L));
             assertEquals(ErrorType.BAD_REQUEST, ex.getErrorType());
         }
 
-        @DisplayName("[State Transition] 만료된 쿠폰 사용 시 BAD_REQUEST 예외가 발생한다.")
+        @DisplayName("[State Transition] 만료된 쿠폰 예약 시 BAD_REQUEST 예외가 발생한다.")
         @Test
         void throwsBadRequestException_whenCouponIsExpired() {
             // arrange
@@ -487,7 +487,7 @@ class CouponApplicationServiceIntegrationTest {
 
             // act & assert
             CoreException ex = assertThrows(CoreException.class,
-                    () -> couponApplicationService.useCoupon(issued.couponId(), user.id(), 10000L));
+                    () -> couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 10000L));
             assertEquals(ErrorType.BAD_REQUEST, ex.getErrorType());
         }
 
@@ -501,13 +501,13 @@ class CouponApplicationServiceIntegrationTest {
 
             // act & assert
             CoreException ex = assertThrows(CoreException.class,
-                    () -> couponApplicationService.useCoupon(issued.couponId(), user.id(), 9999L));
+                    () -> couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 9999L));
             assertEquals(ErrorType.BAD_REQUEST, ex.getErrorType());
         }
 
-        @DisplayName("[Concurrency] 동일한 쿠폰을 동시에 여러 번 사용 요청해도 정확히 1회만 사용된다.")
+        @DisplayName("[Concurrency] 동일한 쿠폰을 동시에 여러 번 예약 요청해도 정확히 1회만 예약된다.")
         @Test
-        void couponIsUsedExactlyOnce_whenConcurrentUseRequested() throws InterruptedException {
+        void couponIsReservedExactlyOnce_whenConcurrentReserveRequested() throws InterruptedException {
             // arrange
             int threadCount = 5;
             UserInfo user = createUser("concurrencyuser");
@@ -524,7 +524,7 @@ class CouponApplicationServiceIntegrationTest {
                 executor.submit(() -> {
                     try {
                         startLatch.await();
-                        couponApplicationService.useCoupon(issued.couponId(), user.id(), 10000L);
+                        couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 10000L);
                         successCount.incrementAndGet();
                     } catch (Exception ignored) {
                         failCount.incrementAndGet();
@@ -543,9 +543,66 @@ class CouponApplicationServiceIntegrationTest {
             assertThat(successCount.get()).isEqualTo(1);
             assertThat(failCount.get()).isEqualTo(threadCount - 1);
 
-            // assert: 쿠폰 상태가 USED로 변경됨
+            // assert: 쿠폰 상태가 RESERVED로 변경됨
             Page<CouponInfo> myCoupons = couponApplicationService.getMyCoupons(user.id(), PageRequest.of(0, 20));
-            assertThat(myCoupons.getContent().get(0).status()).isEqualTo(CouponStatus.USED);
+            assertThat(myCoupons.getContent().get(0).status()).isEqualTo(CouponStatus.RESERVED);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // confirmCoupon / releaseCoupon — 예약 확정 / 해제
+    // ─────────────────────────────────────────────
+
+    @DisplayName("쿠폰 예약 확정/해제")
+    @Nested
+    class ConfirmAndRelease {
+
+        @DisplayName("[State Transition] 예약된 쿠폰을 확정하면 USED로 변경된다.")
+        @Test
+        void changesStatusToUsed_whenReservedCouponIsConfirmed() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("확정 쿠폰", CouponType.FIXED, 1000L, null);
+            CouponInfo issued = couponApplicationService.issueCoupon(user.id(), template.templateId());
+            couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 10000L);
+
+            // act
+            couponApplicationService.confirmCoupon(issued.couponId());
+
+            // assert
+            Page<CouponInfo> myCoupons = couponApplicationService.getMyCoupons(user.id(), PageRequest.of(0, 20));
+            assertEquals(CouponStatus.USED, myCoupons.getContent().get(0).status());
+        }
+
+        @DisplayName("[State Transition] 예약된 쿠폰을 해제하면 AVAILABLE로 복구된다.")
+        @Test
+        void changesStatusToAvailable_whenReservedCouponIsReleased() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("해제 쿠폰", CouponType.FIXED, 1000L, null);
+            CouponInfo issued = couponApplicationService.issueCoupon(user.id(), template.templateId());
+            couponApplicationService.reserveCoupon(issued.couponId(), user.id(), 10000L);
+
+            // act
+            couponApplicationService.releaseCoupon(issued.couponId());
+
+            // assert
+            Page<CouponInfo> myCoupons = couponApplicationService.getMyCoupons(user.id(), PageRequest.of(0, 20));
+            assertEquals(CouponStatus.AVAILABLE, myCoupons.getContent().get(0).status());
+        }
+
+        @DisplayName("[State Transition] 예약되지 않은 쿠폰을 확정하면 BAD_REQUEST 예외가 발생한다.")
+        @Test
+        void throwsBadRequestException_whenConfirmingNonReservedCoupon() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("미예약 쿠폰", CouponType.FIXED, 1000L, null);
+            CouponInfo issued = couponApplicationService.issueCoupon(user.id(), template.templateId());
+
+            // act & assert
+            CoreException ex = assertThrows(CoreException.class,
+                    () -> couponApplicationService.confirmCoupon(issued.couponId()));
+            assertEquals(ErrorType.BAD_REQUEST, ex.getErrorType());
         }
     }
 }
