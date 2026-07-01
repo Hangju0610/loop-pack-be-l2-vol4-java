@@ -6,6 +6,7 @@ import com.loopers.application.product.ProductInfo;
 import com.loopers.application.product.ProductApplicationService;
 import com.loopers.application.user.UserApplicationService;
 import com.loopers.application.user.UserInfo;
+import com.loopers.domain.useractivity.UserActivityType;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -14,10 +15,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
@@ -35,6 +39,7 @@ import static org.mockito.Mockito.doThrow;
 
 // @Async("likeCountExecutor") 전환 후 요청 스레드는 TX_like 커밋 즉시 커넥션을 반환한다.
 // 집계는 별도 풀(max 4)에서 실행되므로 커넥션 2배 점유가 사라져 기본 풀(10)로 충분하다.
+@ExtendWith(OutputCaptureExtension.class)
 @SpringBootTest
 class LikeApplicationServiceIntegrationTest {
 
@@ -89,6 +94,26 @@ class LikeApplicationServiceIntegrationTest {
             await().atMost(5, SECONDS).untilAsserted(() ->
                     assertEquals(1L, productApplicationService.getProduct(product.id()).likeCount())
             );
+        }
+
+        @DisplayName("[Event] 좋아요 등록 성공 시 유저 활동 로그가 기록된다.")
+        @Test
+        void logsUserActivity_whenLikeIsAdded(CapturedOutput output) {
+            // arrange
+            UserInfo user = createUser("testuser1");
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 10);
+
+            // act
+            likeApplicationService.addLike(user.id(), product.id());
+
+            // assert
+            assertThat(output)
+                    .contains("user_activity")
+                    .contains("type=" + UserActivityType.PRODUCT_LIKE)
+                    .contains("userId=" + user.id())
+                    .contains("targetType=PRODUCT")
+                    .contains("targetId=" + product.id());
         }
 
         @DisplayName("[State Transition] soft-deleted 좋아요를 재등록하면 restore되고 likeCount가 1 증가한다.")

@@ -8,6 +8,8 @@ import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.like.LikeRemovedEvent;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.useractivity.UserActivityEvent;
+import com.loopers.domain.useractivity.UserActivityType;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +47,7 @@ public class LikeApplicationService {
             likeRepository.save(new LikeEntity(userId, productId));
         }
         eventPublisher.publishEvent(new LikeAddedEvent(userId, productId));
+        eventPublisher.publishEvent(new UserActivityEvent(UserActivityType.PRODUCT_LIKE, userId, "PRODUCT", productId));
     }
 
     @Transactional
