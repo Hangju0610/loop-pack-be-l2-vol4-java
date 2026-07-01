@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 public class PaymentApplicationService {
 
     private final PaymentService paymentService;
+    private final PaymentPreparationService paymentPreparationService;
     private final PgClient pgClient;
     private final PaymentWaitingRegistry registry;
     private final String callbackUrl;
@@ -28,12 +29,14 @@ public class PaymentApplicationService {
 
     public PaymentApplicationService(
         PaymentService paymentService,
+        PaymentPreparationService paymentPreparationService,
         PgClient pgClient,
         PaymentWaitingRegistry registry,
         @Value("${pg.callback-url:http://localhost:8080/api/v1/payments/callback}") String callbackUrl,
         @Value("${pg.callback-timeout-seconds:10}") long callbackTimeoutSeconds
     ) {
         this.paymentService = paymentService;
+        this.paymentPreparationService = paymentPreparationService;
         this.pgClient = pgClient;
         this.registry = registry;
         this.callbackUrl = callbackUrl;
@@ -41,8 +44,8 @@ public class PaymentApplicationService {
     }
 
     public CompletableFuture<PaymentInfo> initiate(String userId, String orderId, CardType cardType, String cardNo) {
-        // TX1: 락 + 검증 + PENDING 저장
-        PaymentEntity payment = paymentService.prepare(userId, orderId, cardType, cardNo);
+        // TX1: 주문 락 + 검증 + 결제 중복검사 + PENDING 저장 (코디네이터가 한 TX로 조율)
+        PaymentEntity payment = paymentPreparationService.prepare(userId, orderId, cardType, cardNo);
         String paymentId = payment.getId();
 
         // TX 외부: PG 호출

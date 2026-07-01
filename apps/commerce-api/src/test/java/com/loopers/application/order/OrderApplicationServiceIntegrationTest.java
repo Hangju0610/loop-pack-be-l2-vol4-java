@@ -161,6 +161,61 @@ class OrderApplicationServiceIntegrationTest {
     }
 
     // ─────────────────────────────────────────────
+    // prepareForPayment — 결제 준비용 주문 락/검증
+    // ─────────────────────────────────────────────
+
+    @DisplayName("결제 준비용 주문 검증")
+    @Nested
+    class PrepareForPayment {
+
+        @DisplayName("PENDING 주문이면 finalAmount를 반환한다.")
+        @Test
+        void returnsFinalAmount_whenOrderIsPending() {
+            // arrange
+            UserInfo user = createUser("testuser1");
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 10);
+            OrderInfo order = orderApplicationService.createOrder(user.id(),
+                    List.of(new OrderItemCommand(product.id(), 2)), null);
+
+            // act
+            Long amount = orderApplicationService.prepareForPayment(user.id(), order.orderId());
+
+            // assert
+            assertEquals(200_000L, amount);
+        }
+
+        @DisplayName("소유자가 아닌 유저가 요청하면 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFound_whenNotOwner() {
+            // arrange
+            UserInfo owner = createUser("owner1");
+            UserInfo other = createUser("other1");
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 10);
+            OrderInfo order = orderApplicationService.createOrder(owner.id(),
+                    List.of(new OrderItemCommand(product.id(), 1)), null);
+
+            // act & assert
+            CoreException exception = assertThrows(CoreException.class,
+                    () -> orderApplicationService.prepareForPayment(other.id(), order.orderId()));
+            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+        }
+
+        @DisplayName("존재하지 않는 주문이면 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFound_whenOrderNotExists() {
+            // arrange
+            UserInfo user = createUser("testuser1");
+
+            // act & assert
+            CoreException exception = assertThrows(CoreException.class,
+                    () -> orderApplicationService.prepareForPayment(user.id(), "ORD_UNKNOWN"));
+            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+        }
+    }
+
+    // ─────────────────────────────────────────────
     // createOrder — 쿠폰 적용 주문
     // ─────────────────────────────────────────────
 

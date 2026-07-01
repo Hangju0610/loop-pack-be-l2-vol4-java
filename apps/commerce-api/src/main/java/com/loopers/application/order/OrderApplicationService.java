@@ -7,6 +7,7 @@ import com.loopers.domain.order.OrderEntity;
 import com.loopers.domain.order.OrderRepository;
 import com.loopers.domain.order.OrderSnapshot;
 import com.loopers.domain.order.OrderSnapshotItem;
+import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.support.error.CoreException;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.ZonedDateTime;
@@ -63,6 +65,51 @@ public class OrderApplicationService {
         OrderSnapshot snapshot = new OrderSnapshot(snapshotItems, originalAmount, discountAmount,
                 originalAmount - discountAmount, couponId);
         return OrderInfo.from(orderRepository.save(new OrderEntity(userId, snapshot)));
+    }
+
+    /** 결제 준비: 주문 비관적 락 + 소유권/PENDING 검증 후 결제 금액 반환.
+     *  결제 코디네이터가 같은 트랜잭션에서 호출해 락+중복검사 원자성을 보장한다. */
+    @Transactional
+    public Long prepareForPayment(String userId, String orderId) {
+        OrderEntity order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다."));
+        if (!order.isOwnedBy(userId)) {
+            throw new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다.");
+        }
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "결제 가능한 주문 상태가 아닙니다.");
+        }
+        return order.finalAmount();
+    }
+
+    /** 결제 성공 보상: 주문 PAID 전이 + 쿠폰 확정. (AFTER_COMMIT 리스너가 새 트랜잭션에서 호출) */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void completePaidOrder(String orderId) {
+        OrderEntity order = findOrderOrThrow(orderId);
+        order.pay();
+        orderRepository.save(order);
+        String couponId = order.getSnapshot().couponId();
+        if (couponId != null) {
+            couponApplicationService.confirmCoupon(couponId);
+        }
+    }
+
+    /** 결제 실패 보상: 주문 CANCELLED 전이 + 쿠폰 해제 + 재고 복원. (all-or-nothing, 새 트랜잭션) */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void compensateFailedOrder(String orderId) {
+        OrderEntity order = findOrderOrThrow(orderId);
+        order.cancel();
+        orderRepository.save(order);
+        String couponId = order.getSnapshot().couponId();
+        if (couponId != null) {
+            couponApplicationService.releaseCoupon(couponId);
+        }
+        for (OrderSnapshotItem item : order.getSnapshot().items()) {
+            InventoryEntity inventory = inventoryRepository.findByProductId(item.productId())
+                    .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "복원할 재고를 찾을 수 없습니다."));
+            inventory.restore(item.quantity());
+            inventoryRepository.save(inventory);
+        }
     }
 
     @Transactional(readOnly = true)
