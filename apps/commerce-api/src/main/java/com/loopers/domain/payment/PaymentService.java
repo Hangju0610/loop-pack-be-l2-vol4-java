@@ -60,19 +60,8 @@ public class PaymentService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public PaymentEntity getOrThrow(String paymentId) {
-        return findPaymentOrThrow(paymentId);
-    }
-
     private PaymentEntity findPaymentOrThrow(String paymentId) {
         return paymentRepository.findById(paymentId)
-            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
-    }
-
-    @Transactional(readOnly = true)
-    public PaymentEntity getByTransactionKey(String transactionKey) {
-        return paymentRepository.findByTransactionKey(transactionKey)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
     }
 
