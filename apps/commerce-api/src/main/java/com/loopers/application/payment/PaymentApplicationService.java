@@ -2,6 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.domain.payment.CardType;
 import com.loopers.domain.payment.PaymentEntity;
+import com.loopers.domain.payment.PaymentRepository;
 import com.loopers.domain.payment.PaymentService;
 import com.loopers.domain.payment.PaymentStatus;
 import com.loopers.domain.payment.PgClient;
@@ -22,6 +23,7 @@ public class PaymentApplicationService {
 
     private final PaymentService paymentService;
     private final PaymentPreparationService paymentPreparationService;
+    private final PaymentRepository paymentRepository;
     private final PgClient pgClient;
     private final PaymentWaitingRegistry registry;
     private final String callbackUrl;
@@ -30,6 +32,7 @@ public class PaymentApplicationService {
     public PaymentApplicationService(
         PaymentService paymentService,
         PaymentPreparationService paymentPreparationService,
+        PaymentRepository paymentRepository,
         PgClient pgClient,
         PaymentWaitingRegistry registry,
         @Value("${pg.callback-url:http://localhost:8080/api/v1/payments/callback}") String callbackUrl,
@@ -37,6 +40,7 @@ public class PaymentApplicationService {
     ) {
         this.paymentService = paymentService;
         this.paymentPreparationService = paymentPreparationService;
+        this.paymentRepository = paymentRepository;
         this.pgClient = pgClient;
         this.registry = registry;
         this.callbackUrl = callbackUrl;
@@ -98,7 +102,7 @@ public class PaymentApplicationService {
     }
 
     public PaymentInfo getPayment(String userId, String paymentId) {
-        PaymentEntity payment = paymentService.getOrThrow(paymentId);
+        PaymentEntity payment = findByIdOrThrow(paymentId);
         if (!payment.isOwnedBy(userId)) {
             throw new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다.");
         }
@@ -117,6 +121,16 @@ public class PaymentApplicationService {
     }
 
     private PaymentInfo infoOf(String transactionKey) {
-        return PaymentInfo.from(paymentService.getByTransactionKey(transactionKey));
+        return PaymentInfo.from(findByTransactionKeyOrThrow(transactionKey));
+    }
+
+    private PaymentEntity findByIdOrThrow(String paymentId) {
+        return paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
+    }
+
+    private PaymentEntity findByTransactionKeyOrThrow(String transactionKey) {
+        return paymentRepository.findByTransactionKey(transactionKey)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
     }
 }
