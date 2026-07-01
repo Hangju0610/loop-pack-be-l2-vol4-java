@@ -6,4 +6,14 @@ public record UserActivityEvent(
         String targetType,
         String targetId
 ) {
+    private static final String ANONYMOUS_USER_ID = "ANONYMOUS";
+    private static final String PRODUCT_TARGET_TYPE = "PRODUCT";
+
+    public static UserActivityEvent productView(String productId) {
+        return new UserActivityEvent(UserActivityType.PRODUCT_VIEW, ANONYMOUS_USER_ID, PRODUCT_TARGET_TYPE, productId);
+    }
+
+    public static UserActivityEvent productLike(String userId, String productId) {
+        return new UserActivityEvent(UserActivityType.PRODUCT_LIKE, userId, PRODUCT_TARGET_TYPE, productId);
+    }
 }

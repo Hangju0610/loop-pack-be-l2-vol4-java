@@ -9,10 +9,12 @@ import com.loopers.domain.inventory.InventoryRepository;
 import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.useractivity.UserActivityEvent;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -41,6 +43,7 @@ public class ProductApplicationService {
     private final ProductQueryRepository productQueryRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ProductInfo createProduct(String brandId, String name, String description, Long price, Integer quantity) {
@@ -53,6 +56,12 @@ public class ProductApplicationService {
 
     public ProductInfo getProduct(String id) {
         return assembleProductInfo(findProductOrThrow(id));
+    }
+
+    public ProductInfo getProductForCustomer(String id) {
+        ProductInfo product = getProduct(id);
+        eventPublisher.publishEvent(UserActivityEvent.productView(id));
+        return product;
     }
 
     public Page<ProductInfo> getAllProducts(String brandId, Pageable pageable) {

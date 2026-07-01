@@ -35,6 +35,6 @@ public class ProductV1Controller implements ProductV1ApiSpec {
     public ApiResponse<ProductV1Dto.PdpResponse> getProduct(
             @PathVariable String productId
     ) {
-        return ApiResponse.success(ProductV1Dto.PdpResponse.from(productApplicationService.getProduct(productId)));
+        return ApiResponse.success(ProductV1Dto.PdpResponse.from(productApplicationService.getProductForCustomer(productId)));
     }
 }
