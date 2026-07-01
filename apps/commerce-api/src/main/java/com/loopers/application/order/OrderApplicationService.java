@@ -10,9 +10,11 @@ import com.loopers.domain.order.OrderSnapshotItem;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.useractivity.UserActivityEvent;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ public class OrderApplicationService {
     private final ProductRepository productRepository;
     private final InventoryRepository inventoryRepository;
     private final CouponApplicationService couponApplicationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public OrderInfo createOrder(String userId, List<OrderItemCommand> commands, String couponId) {
@@ -64,7 +67,9 @@ public class OrderApplicationService {
 
         OrderSnapshot snapshot = new OrderSnapshot(snapshotItems, originalAmount, discountAmount,
                 originalAmount - discountAmount, couponId);
-        return OrderInfo.from(orderRepository.save(new OrderEntity(userId, snapshot)));
+        OrderInfo order = OrderInfo.from(orderRepository.save(new OrderEntity(userId, snapshot)));
+        eventPublisher.publishEvent(UserActivityEvent.orderCreated(userId, order.orderId()));
+        return order;
     }
 
     /** 결제 준비: 주문 비관적 락 + 소유권/PENDING 검증 후 결제 금액 반환.
