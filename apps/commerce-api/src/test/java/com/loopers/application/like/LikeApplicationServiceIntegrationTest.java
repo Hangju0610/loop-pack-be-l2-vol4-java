@@ -110,7 +110,7 @@ class LikeApplicationServiceIntegrationTest {
             // assert
             assertThat(output)
                     .contains("user_activity")
-                    .contains("type=" + UserActivityType.PRODUCT_LIKE)
+                    .containsOnlyOnce("type=" + UserActivityType.PRODUCT_LIKE)
                     .contains("userId=" + user.id())
                     .contains("targetType=PRODUCT")
                     .contains("targetId=" + product.id());

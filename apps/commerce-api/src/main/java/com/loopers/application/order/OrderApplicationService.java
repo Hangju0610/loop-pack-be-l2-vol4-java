@@ -3,6 +3,7 @@ package com.loopers.application.order;
 import com.loopers.application.coupon.CouponApplicationService;
 import com.loopers.domain.inventory.InventoryEntity;
 import com.loopers.domain.inventory.InventoryRepository;
+import com.loopers.domain.order.OrderCreatedEvent;
 import com.loopers.domain.order.OrderEntity;
 import com.loopers.domain.order.OrderRepository;
 import com.loopers.domain.order.OrderSnapshot;
@@ -10,7 +11,6 @@ import com.loopers.domain.order.OrderSnapshotItem;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
-import com.loopers.domain.useractivity.UserActivityEvent;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -68,7 +68,7 @@ public class OrderApplicationService {
         OrderSnapshot snapshot = new OrderSnapshot(snapshotItems, originalAmount, discountAmount,
                 originalAmount - discountAmount, couponId);
         OrderInfo order = OrderInfo.from(orderRepository.save(new OrderEntity(userId, snapshot)));
-        eventPublisher.publishEvent(UserActivityEvent.orderCreated(userId, order.orderId()));
+        eventPublisher.publishEvent(new OrderCreatedEvent(userId, order.orderId()));
         return order;
     }
 

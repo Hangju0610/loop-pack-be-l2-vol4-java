@@ -132,7 +132,7 @@ class OrderApplicationServiceIntegrationTest {
             // assert
             assertThat(output)
                     .contains("user_activity")
-                    .contains("type=" + UserActivityType.ORDER_CREATED)
+                    .containsOnlyOnce("type=" + UserActivityType.ORDER_CREATED)
                     .contains("userId=" + user.id())
                     .contains("targetType=ORDER")
                     .contains("targetId=" + result.orderId());
