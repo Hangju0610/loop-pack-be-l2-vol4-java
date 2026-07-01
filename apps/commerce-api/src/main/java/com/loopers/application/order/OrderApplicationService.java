@@ -104,12 +104,19 @@ public class OrderApplicationService {
         if (couponId != null) {
             couponApplicationService.releaseCoupon(couponId);
         }
-        for (OrderSnapshotItem item : order.getSnapshot().items()) {
-            InventoryEntity inventory = inventoryRepository.findByProductId(item.productId())
-                    .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "복원할 재고를 찾을 수 없습니다."));
-            inventory.restore(item.quantity());
-            inventoryRepository.save(inventory);
+
+        // 재고 복원도 차감(createOrder)과 동일하게 비관적 락으로 lost update를 방지한다.
+        Map<String, Integer> restoreQuantities = order.getSnapshot().items().stream()
+                .collect(Collectors.toMap(OrderSnapshotItem::productId, OrderSnapshotItem::quantity));
+        List<String> productIds = restoreQuantities.keySet().stream().sorted().toList();
+        List<InventoryEntity> inventories = inventoryRepository.findAllByProductIdsWithLock(productIds);
+        if (inventories.size() != productIds.size()) {
+            throw new CoreException(ErrorType.NOT_FOUND, "복원할 재고를 찾을 수 없습니다.");
         }
+        inventories.forEach(inventory -> {
+            inventory.restore(restoreQuantities.get(inventory.getProductId()));
+            inventoryRepository.save(inventory);
+        });
     }
 
     @Transactional(readOnly = true)
