@@ -25,18 +25,13 @@ public class PaymentService {
         return paymentRepository.save(new PaymentEntity(orderId, userId, cardType, cardNo, amount));
     }
 
-    /** TX2: transactionKey 저장 + PG 즉시 SUCCESS/FAILED 확정 */
+    /** TX2: PG 요청 응답의 transactionKey 저장.
+     *  PG 계약상 요청 응답은 항상 PENDING이며, 성공/실패 확정은 콜백/폴(settle)로만 온다. */
     @Transactional
     public void applyPgResponse(String paymentId, PgTransactionResponse pgResponse) {
         PaymentEntity payment = findPaymentOrThrow(paymentId);
         payment.registerTransactionKey(pgResponse.transactionKey());
-        if (pgResponse.status() == PgTransactionStatus.SUCCESS) {
-            confirmSuccess(payment);
-        } else if (pgResponse.status() == PgTransactionStatus.FAILED) {
-            confirmFailure(payment, pgResponse.reason());
-        } else {
-            paymentRepository.save(payment); // PENDING: transactionKey만 저장
-        }
+        paymentRepository.save(payment);
     }
 
     /** PG 요청 자체 실패 시 FAILED 확정 */

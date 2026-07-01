@@ -60,14 +60,9 @@ public class PaymentApplicationService {
             throw e;
         }
 
-        // TX2: transactionKey 저장 + PG 즉시 확정 반영
+        // TX2: transactionKey 저장 (PG 요청 응답은 항상 PENDING, 확정은 콜백/폴로만 온다)
         paymentService.applyPgResponse(paymentId, pgResponse);
         String transactionKey = pgResponse.transactionKey();
-
-        // PG가 즉시 확정(SUCCESS/FAILED)이면 콜백 대기 없이 즉시 반환
-        if (pgResponse.status() != PgTransactionStatus.PENDING) {
-            return CompletableFuture.completedFuture(infoOf(transactionKey));
-        }
 
         // 콜백 대기 future 구성
         // NOTE: TX2 커밋 후 여기까지 오는 사이에 PG 콜백이 먼저 도착하면 해당 콜백은

@@ -108,20 +108,6 @@ class PaymentApplicationServiceIntegrationTest {
                 () -> paymentApplicationService.initiate(userId, orderId, CardType.SAMSUNG, "1234-5678-9814-1451"));
         }
 
-        @DisplayName("PG가 즉시 FAILED를 응답하면 PaymentEntity가 FAILED로 확정되고 future도 FAILED로 완료된다.")
-        @Test
-        void initiate_completesAsFailed_whenPgRespondsFailedImmediately() throws Exception {
-            // PG가 PENDING이 아닌 FAILED를 즉시 응답하면 applyPgResponse가 즉시 FAILED로 확정하고
-            // initiate는 콜백 대기 없이 completedFuture를 반환한다. (getTransaction 미호출)
-            when(pgClient.requestPayment(any(), any()))
-                .thenReturn(new PgTransactionResponse("TX-IMM-FAIL", PgTransactionStatus.FAILED, "한도 초과"));
-
-            var future = paymentApplicationService.initiate(userId, orderId, CardType.SAMSUNG, "1234-5678-9814-1451");
-            PaymentInfo result = future.get(5, java.util.concurrent.TimeUnit.SECONDS);
-
-            assertThat(result.status()).isEqualTo(PaymentStatus.FAILED);
-            assertThat(result.failureReason()).isEqualTo("한도 초과");
-        }
     }
 
     @DisplayName("콜백 미수신 (timeout → 1차 Poll)")
