@@ -6,7 +6,6 @@ import com.loopers.application.product.ProductInfo;
 import com.loopers.application.product.ProductApplicationService;
 import com.loopers.application.user.UserApplicationService;
 import com.loopers.application.user.UserInfo;
-import com.loopers.domain.useractivity.UserActivityType;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -110,7 +109,7 @@ class LikeApplicationServiceIntegrationTest {
             // assert
             assertThat(output)
                     .contains("user_activity")
-                    .containsOnlyOnce("type=" + UserActivityType.PRODUCT_LIKE)
+                    .containsOnlyOnce("type=PRODUCT_LIKE")
                     .contains("userId=" + user.id())
                     .contains("targetType=PRODUCT")
                     .contains("targetId=" + product.id());

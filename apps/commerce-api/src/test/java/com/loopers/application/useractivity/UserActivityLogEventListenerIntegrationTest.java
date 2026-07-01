@@ -1,7 +1,6 @@
 package com.loopers.application.useractivity;
 
-import com.loopers.domain.useractivity.UserActivityEvent;
-import com.loopers.domain.useractivity.UserActivityType;
+import com.loopers.domain.product.ProductViewedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,16 +19,11 @@ class UserActivityLogEventListenerIntegrationTest {
     @Autowired
     private ApplicationEventPublisher eventPublisher;
 
-    @DisplayName("유저 활동 이벤트가 발행되면 서버 로그에 기록된다.")
+    @DisplayName("ProductViewedEvent가 발행되면 상품 조회 활동 로그가 기록된다.")
     @Test
-    void logsUserActivity_whenUserActivityEventIsPublished(CapturedOutput output) {
+    void logsProductView_whenProductViewedEventIsPublished(CapturedOutput output) {
         // arrange
-        UserActivityEvent event = new UserActivityEvent(
-                UserActivityType.PRODUCT_VIEW,
-                "testuser1",
-                "PRODUCT",
-                "PRD_01J00000000000000000000000"
-        );
+        ProductViewedEvent event = new ProductViewedEvent("PRD_01J00000000000000000000000", "USR_01");
 
         // act
         eventPublisher.publishEvent(event);
@@ -38,7 +32,25 @@ class UserActivityLogEventListenerIntegrationTest {
         assertThat(output)
                 .contains("user_activity")
                 .contains("type=PRODUCT_VIEW")
-                .contains("userId=testuser1")
+                .contains("userId=USR_01")
+                .contains("targetType=PRODUCT")
+                .contains("targetId=PRD_01J00000000000000000000000");
+    }
+
+    @DisplayName("ProductViewedEvent에 userId가 없으면 ANONYMOUS로 로깅된다.")
+    @Test
+    void logsAnonymous_whenProductViewedEventHasNoUserId(CapturedOutput output) {
+        // arrange
+        ProductViewedEvent event = new ProductViewedEvent("PRD_01J00000000000000000000000", null);
+
+        // act
+        eventPublisher.publishEvent(event);
+
+        // assert
+        assertThat(output)
+                .contains("user_activity")
+                .contains("type=PRODUCT_VIEW")
+                .contains("userId=ANONYMOUS")
                 .contains("targetType=PRODUCT")
                 .contains("targetId=PRD_01J00000000000000000000000");
     }

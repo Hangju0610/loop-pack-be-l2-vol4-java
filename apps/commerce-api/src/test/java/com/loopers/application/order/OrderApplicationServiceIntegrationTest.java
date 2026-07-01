@@ -11,7 +11,6 @@ import com.loopers.domain.coupon.CouponType;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.application.user.UserApplicationService;
 import com.loopers.application.user.UserInfo;
-import com.loopers.domain.useractivity.UserActivityType;
 import com.loopers.infrastructure.inventory.InventoryJpaRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -132,7 +131,7 @@ class OrderApplicationServiceIntegrationTest {
             // assert
             assertThat(output)
                     .contains("user_activity")
-                    .containsOnlyOnce("type=" + UserActivityType.ORDER_CREATED)
+                    .containsOnlyOnce("type=ORDER_CREATED")
                     .contains("userId=" + user.id())
                     .contains("targetType=ORDER")
                     .contains("targetId=" + result.orderId());

@@ -4,7 +4,6 @@ import com.loopers.application.brand.BrandApplicationService;
 import com.loopers.application.brand.BrandInfo;
 import com.loopers.application.product.ProductApplicationService;
 import com.loopers.application.product.ProductInfo;
-import com.loopers.domain.useractivity.UserActivityType;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,22 +34,43 @@ class ProductViewUserActivityIntegrationTest {
         databaseCleanUp.truncateAllTables();
     }
 
-    @DisplayName("고객이 상품을 단건 조회하면 유저 활동 로그가 기록된다.")
+    @DisplayName("고객이 userId 없이 상품을 조회하면 ANONYMOUS로 유저 활동 로그가 기록된다.")
     @Test
-    void logsUserActivity_whenCustomerGetsProduct(CapturedOutput output) {
+    void logsAnonymous_whenCustomerGetsProductWithoutUserId(CapturedOutput output) {
         // arrange
         BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
         ProductInfo product = productApplicationService.createProduct(
                 brand.id(), "에어맥스", "운동화 설명", 100_000L, 5);
 
         // act
-        productApplicationService.getProductForCustomer(product.id());
+        productApplicationService.getProductForCustomer(product.id(), null);
 
         // assert
         assertThat(output)
                 .contains("user_activity")
-                .contains("type=" + UserActivityType.PRODUCT_VIEW)
+                .contains("type=PRODUCT_VIEW")
                 .contains("userId=ANONYMOUS")
+                .contains("targetType=PRODUCT")
+                .contains("targetId=" + product.id());
+    }
+
+    @DisplayName("고객이 userId와 함께 상품을 조회하면 해당 userId로 유저 활동 로그가 기록된다.")
+    @Test
+    void logsUserId_whenCustomerGetsProductWithUserId(CapturedOutput output) {
+        // arrange
+        BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+        ProductInfo product = productApplicationService.createProduct(
+                brand.id(), "에어맥스", "운동화 설명", 100_000L, 5);
+        String userId = "USR_01J00000000000000000000000";
+
+        // act
+        productApplicationService.getProductForCustomer(product.id(), userId);
+
+        // assert
+        assertThat(output)
+                .contains("user_activity")
+                .contains("type=PRODUCT_VIEW")
+                .contains("userId=" + userId)
                 .contains("targetType=PRODUCT")
                 .contains("targetId=" + product.id());
     }

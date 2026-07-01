@@ -9,7 +9,7 @@ import com.loopers.domain.inventory.InventoryRepository;
 import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
-import com.loopers.domain.useractivity.UserActivityEvent;
+import com.loopers.domain.product.ProductViewedEvent;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -58,9 +58,9 @@ public class ProductApplicationService {
         return assembleProductInfo(findProductOrThrow(id));
     }
 
-    public ProductInfo getProductForCustomer(String id) {
+    public ProductInfo getProductForCustomer(String id, String userId) {
         ProductInfo product = getProduct(id);
-        eventPublisher.publishEvent(UserActivityEvent.productView(id));
+        eventPublisher.publishEvent(new ProductViewedEvent(id, userId));
         return product;
     }
 

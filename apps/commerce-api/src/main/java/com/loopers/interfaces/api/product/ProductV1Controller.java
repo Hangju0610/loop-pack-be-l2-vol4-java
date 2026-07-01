@@ -4,6 +4,7 @@ import com.loopers.application.product.ProductApplicationService;
 import com.loopers.domain.product.ProductSort;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResult;
+import com.loopers.interfaces.auth.LoginUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
@@ -33,8 +34,9 @@ public class ProductV1Controller implements ProductV1ApiSpec {
 
     @GetMapping("/{productId}")
     public ApiResponse<ProductV1Dto.PdpResponse> getProduct(
-            @PathVariable String productId
+            @PathVariable String productId,
+            @LoginUser String userId
     ) {
-        return ApiResponse.success(ProductV1Dto.PdpResponse.from(productApplicationService.getProductForCustomer(productId)));
+        return ApiResponse.success(ProductV1Dto.PdpResponse.from(productApplicationService.getProductForCustomer(productId, userId)));
     }
 }
