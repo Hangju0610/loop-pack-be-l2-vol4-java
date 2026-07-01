@@ -31,7 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.doThrow;
 
-@SpringBootTest
+// AFTER_COMMIT + REQUIRES_NEW 리스너는 원 TX 커밋 이후에도 커넥션을 잠시 보유한다.
+// 10개 스레드가 동시 실행되면 커넥션 2배(20개)가 필요해 기본 풀(10)이 부족하므로
+// 동시성 테스트에 충분한 풀 크기를 확보한다.
+@SpringBootTest(properties = "datasource.mysql-jpa.main.maximum-pool-size=30")
 class LikeApplicationServiceIntegrationTest {
 
     @Autowired
