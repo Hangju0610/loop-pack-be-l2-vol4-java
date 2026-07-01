@@ -45,10 +45,10 @@ public class PaymentService {
         confirmFailure(findPaymentOrThrow(paymentId), reason);
     }
 
-    /** TX3: 콜백 / 1차 Poll 공통 확정. first-wins 멱등 */
+    /** TX3: 콜백 / 1차 Poll 공통 확정. 결제행 비관적 락으로 동시 정산을 직렬화 → first-wins 멱등 */
     @Transactional
     public void settle(String transactionKey, PgTransactionStatus status, String reason) {
-        PaymentEntity payment = paymentRepository.findByTransactionKey(transactionKey)
+        PaymentEntity payment = paymentRepository.findByTransactionKeyWithLock(transactionKey)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
         if (payment.getStatus() != PaymentStatus.PENDING) {
             // 이미 확정 → 첫 결정 유지. 중복/지연 콜백(at-least-once 재전송)을 멱등하게 무시.

@@ -413,6 +413,34 @@ class PaymentApplicationServiceIntegrationTest {
             assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2); // 차감분 2 복원
         }
 
+        @DisplayName("동시 정산: SUCCESS와 FAILED 콜백이 경합해도 결제-주문 상태가 일관된다(split-brain 없음).")
+        @Test
+        void concurrentSettlement_isConsistent() {
+            String couponId = issueCoupon();
+            String cbOrderId = couponBackedOrderId(couponId);
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-RACE", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, cbOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            var success = java.util.concurrent.CompletableFuture.runAsync(() ->
+                paymentApplicationService.processCallback("TX-RACE", PgTransactionStatus.SUCCESS, null));
+            var failed = java.util.concurrent.CompletableFuture.runAsync(() ->
+                paymentApplicationService.processCallback("TX-RACE", PgTransactionStatus.FAILED, "한도 초과"));
+            java.util.concurrent.CompletableFuture.allOf(success, failed).join();
+
+            PaymentStatus paymentStatus = paymentApplicationService.getPaymentByTransactionKey("TX-RACE").status();
+            OrderStatus orderStatus = orderApplicationService.getOrder(userId, cbOrderId).status();
+            // 락으로 정확히 한 전이만 확정 → 결제와 주문이 짝지어진 일관 상태여야 한다.
+            if (paymentStatus == PaymentStatus.SUCCESS) {
+                assertThat(orderStatus).isEqualTo(OrderStatus.PAID);
+                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
+            } else {
+                assertThat(paymentStatus).isEqualTo(PaymentStatus.FAILED);
+                assertThat(orderStatus).isEqualTo(OrderStatus.CANCELLED);
+                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
+            }
+        }
+
         @DisplayName("AC-3: 쿠폰 없는 주문 결제 실패도 주문 CANCELLED, 재고 복원(쿠폰 단계 skip).")
         @Test
         void failure_withoutCoupon_cancelsOrder_andRestoresInventory() {
