@@ -108,7 +108,7 @@ class PaymentV1ApiE2ETest {
                     ENDPOINT + "/callback",
                     new HttpEntity<>("""
                         {"transactionKey":"TX-E2E-001","orderId":"%s","cardType":"SAMSUNG",
-                        "cardNo":"1234-5678-9814-1451","amount":10000,"status":"SUCCESS","reason":null}
+                        "cardNo":"1234-5678-9814-1451","amount":100000,"status":"SUCCESS","reason":null}
                     """.formatted(orderId), cbHeaders),
                     Void.class
                 );
@@ -202,7 +202,7 @@ class PaymentV1ApiE2ETest {
                 ENDPOINT + "/callback",
                 new HttpEntity<>("""
                     {"transactionKey":"TX-DUP","orderId":"%s","cardType":"SAMSUNG",
-                    "cardNo":"1234-5678-9814-1451","amount":10000,"status":"SUCCESS","reason":null}
+                    "cardNo":"1234-5678-9814-1451","amount":100000,"status":"SUCCESS","reason":null}
                 """.formatted(orderId), cbHeaders),
                 Void.class
             );
@@ -232,7 +232,7 @@ class PaymentV1ApiE2ETest {
                 ENDPOINT + "/callback",
                 new HttpEntity<>("""
                     {"transactionKey":"TX-NOAUTH","orderId":"%s","cardType":"SAMSUNG",
-                    "cardNo":"1234-5678-9814-1451","amount":10000,"status":"SUCCESS","reason":null}
+                    "cardNo":"1234-5678-9814-1451","amount":100000,"status":"SUCCESS","reason":null}
                 """.formatted(orderId), noAuth),
                 Void.class
             );
@@ -386,7 +386,7 @@ class PaymentV1ApiE2ETest {
                 ENDPOINT + "/callback",
                 new HttpEntity<>("""
                     {"transactionKey":"TX-E2E-FAIL","orderId":"%s","cardType":"SAMSUNG",
-                    "cardNo":"1234-5678-9814-1451","amount":180000,"status":"FAILED","reason":"한도 초과"}
+                    "cardNo":"1234-5678-9814-1451","amount":190000,"status":"FAILED","reason":"한도 초과"}
                 """.formatted(cbOrderId), cbHeaders),
                 Void.class
             );
@@ -402,6 +402,45 @@ class PaymentV1ApiE2ETest {
             assertThat(couponStatus).isEqualTo(CouponStatus.AVAILABLE);
             assertThat(inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity())
                 .isEqualTo(afterOrder + 2);
+        }
+
+        @DisplayName("금액이 불일치하는 콜백은 400으로 거부되고 보상이 일어나지 않는다(주문 PENDING·쿠폰 RESERVED·재고 유지).")
+        @Test
+        void mismatchedAmountCallback_isRejected_andDoesNotCompensate() {
+            var template = couponApplicationService.createTemplate(
+                "테스트 쿠폰", CouponType.FIXED, 10_000L, null, ZonedDateTime.now().plusDays(30));
+            String couponId = couponApplicationService.issueCoupon(userId, template.templateId()).couponId();
+            String cbOrderId = orderApplicationService.createOrder(userId,
+                List.of(new OrderItemCommand(productId, 2)), couponId).orderId(); // 결제액 190,000
+            int afterOrder = inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity();
+
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-E2E-MISMATCH", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, cbOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            // 위조/오류 콜백: 실제 190,000이 아닌 999,999 전송
+            HttpHeaders cbHeaders = new HttpHeaders();
+            cbHeaders.setContentType(MediaType.APPLICATION_JSON);
+            var callbackResponse = testRestTemplate.postForEntity(
+                ENDPOINT + "/callback",
+                new HttpEntity<>("""
+                    {"transactionKey":"TX-E2E-MISMATCH","orderId":"%s","cardType":"SAMSUNG",
+                    "cardNo":"1234-5678-9814-1451","amount":999999,"status":"FAILED","reason":"위조"}
+                """.formatted(cbOrderId), cbHeaders),
+                Void.class
+            );
+
+            // 거부(4xx) + 보상 미발생
+            assertThat(callbackResponse.getStatusCode().is4xxClientError()).isTrue();
+            assertThat(orderApplicationService.getOrder(userId, cbOrderId).status())
+                .isEqualTo(OrderStatus.PENDING);
+            CouponStatus couponStatus = couponApplicationService
+                .getMyCoupons(userId, org.springframework.data.domain.PageRequest.of(0, 50))
+                .stream().filter(c -> c.couponId().equals(couponId))
+                .map(com.loopers.application.coupon.CouponInfo::status).findFirst().orElseThrow();
+            assertThat(couponStatus).isEqualTo(CouponStatus.RESERVED);
+            assertThat(inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity())
+                .isEqualTo(afterOrder);
         }
     }
 }

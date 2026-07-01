@@ -81,6 +81,17 @@ public class PaymentService {
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
     }
 
+    /** 외부(PG) 콜백의 무결성 검증: orderId·amount가 저장된 결제와 일치하지 않으면 정산 전에 거부한다.
+     *  orderId/amount는 결제 생성 후 불변이므로 락 없이 대조해도 안전하다. */
+    @Transactional(readOnly = true)
+    public void assertCallbackConsistent(String transactionKey, String orderId, Long amount) {
+        PaymentEntity payment = paymentRepository.findByTransactionKey(transactionKey)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
+        if (!payment.getOrderId().equals(orderId) || !payment.getAmount().equals(amount)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "콜백 정보가 결제와 일치하지 않습니다.");
+        }
+    }
+
     /** 확정=발행 funnel: 실제 PENDING→SUCCESS 전이가 일어난 경우에만 이벤트를 발행한다. */
     private void confirmSuccess(PaymentEntity payment) {
         if (payment.getStatus() != PaymentStatus.PENDING) {

@@ -95,6 +95,13 @@ public class PaymentApplicationService {
         paymentService.settle(transactionKey, status, reason); // first-wins 멱등
     }
 
+    /** PG 콜백(신뢰 불가 인바운드) 처리: 무결성 검증 후 정산. 불일치 콜백은 보상 전에 거부된다. */
+    public void handlePgCallback(String transactionKey, String orderId, Long amount,
+            PgTransactionStatus status, String reason) {
+        paymentService.assertCallbackConsistent(transactionKey, orderId, amount);
+        processCallback(transactionKey, status, reason);
+    }
+
     public PaymentInfo getPayment(String userId, String paymentId) {
         PaymentEntity payment = paymentService.getOrThrow(paymentId);
         if (!payment.isOwnedBy(userId)) {
