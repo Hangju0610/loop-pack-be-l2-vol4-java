@@ -48,13 +48,6 @@ public class CouponEntity extends BaseEntity {
         return status;
     }
 
-    public void use() {
-        if (status != CouponStatus.AVAILABLE) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "사용 가능한 쿠폰이 아닙니다.");
-        }
-        this.status = CouponStatus.USED;
-    }
-
     public void reserve() {
         if (status != CouponStatus.AVAILABLE) {
             throw new CoreException(ErrorType.BAD_REQUEST, "예약 가능한 쿠폰이 아닙니다.");

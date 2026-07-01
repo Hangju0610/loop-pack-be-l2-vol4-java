@@ -1,17 +1,24 @@
 package com.loopers.interfaces.api.payment;
 
 import com.loopers.application.brand.BrandApplicationService;
+import com.loopers.application.coupon.CouponApplicationService;
 import com.loopers.application.order.OrderApplicationService;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.payment.PaymentApplicationService;
 import com.loopers.application.product.ProductApplicationService;
 import com.loopers.application.user.UserApplicationService;
+import com.loopers.domain.coupon.CouponStatus;
+import com.loopers.domain.coupon.CouponType;
+import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.payment.CardType;
 import com.loopers.domain.payment.PgClient;
 import com.loopers.domain.payment.PgTransactionResponse;
 import com.loopers.domain.payment.PgTransactionStatus;
+import com.loopers.infrastructure.inventory.InventoryJpaRepository;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.utils.DatabaseCleanUp;
+
+import java.time.ZonedDateTime;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,11 +50,14 @@ class PaymentV1ApiE2ETest {
     @Autowired ProductApplicationService productApplicationService;
     @Autowired OrderApplicationService orderApplicationService;
     @Autowired PaymentApplicationService paymentApplicationService;
+    @Autowired CouponApplicationService couponApplicationService;
+    @Autowired InventoryJpaRepository inventoryJpaRepository;
     @Autowired DatabaseCleanUp databaseCleanUp;
     @MockBean PgClient pgClient;
 
     private String userId;
     private String orderId;
+    private String productId;
     private final String loginId = "testuser";
     private final String loginPw = "Password1!";
 
@@ -64,7 +74,8 @@ class PaymentV1ApiE2ETest {
 
         var brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
         var product = productApplicationService.createProduct(brand.id(), "에어맥스", "상품 설명", 100_000L, 10);
-        var order = orderApplicationService.createOrder(userId, List.of(new OrderItemCommand(product.id(), 1)), null);
+        productId = product.id();
+        var order = orderApplicationService.createOrder(userId, List.of(new OrderItemCommand(productId, 1)), null);
         orderId = order.orderId();
     }
 
@@ -346,6 +357,51 @@ class PaymentV1ApiE2ETest {
 
             assertThat(successCount.get()).isEqualTo(1);
             assertThat(conflictCount.get()).isEqualTo(1);
+        }
+    }
+
+    @DisplayName("결제 실패 보상 (Phase C, HTTP 콜백 → 이벤트 → 보상)")
+    @Nested
+    class FailureCompensation {
+
+        @DisplayName("FAILED 콜백 수신 시 주문 CANCELLED, 쿠폰 AVAILABLE, 재고가 복원된다.")
+        @Test
+        void failedCallback_cancelsOrder_releasesCoupon_restoresInventory() {
+            // arrange: 쿠폰 발급 + 쿠폰 적용 주문(재고 -2, 쿠폰 RESERVED)
+            var template = couponApplicationService.createTemplate(
+                "테스트 쿠폰", CouponType.FIXED, 10_000L, null, ZonedDateTime.now().plusDays(30));
+            String couponId = couponApplicationService.issueCoupon(userId, template.templateId()).couponId();
+            String cbOrderId = orderApplicationService.createOrder(userId,
+                List.of(new OrderItemCommand(productId, 2)), couponId).orderId();
+            int afterOrder = inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity();
+
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-E2E-FAIL", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, cbOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            // act: PG FAILED 콜백을 HTTP로 수신
+            HttpHeaders cbHeaders = new HttpHeaders();
+            cbHeaders.setContentType(MediaType.APPLICATION_JSON);
+            var callbackResponse = testRestTemplate.postForEntity(
+                ENDPOINT + "/callback",
+                new HttpEntity<>("""
+                    {"transactionKey":"TX-E2E-FAIL","orderId":"%s","cardType":"SAMSUNG",
+                    "cardNo":"1234-5678-9814-1451","amount":180000,"status":"FAILED","reason":"한도 초과"}
+                """.formatted(cbOrderId), cbHeaders),
+                Void.class
+            );
+
+            // assert
+            assertThat(callbackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(orderApplicationService.getOrder(userId, cbOrderId).status())
+                .isEqualTo(OrderStatus.CANCELLED);
+            CouponStatus couponStatus = couponApplicationService
+                .getMyCoupons(userId, org.springframework.data.domain.PageRequest.of(0, 50))
+                .stream().filter(c -> c.couponId().equals(couponId))
+                .map(com.loopers.application.coupon.CouponInfo::status).findFirst().orElseThrow();
+            assertThat(couponStatus).isEqualTo(CouponStatus.AVAILABLE);
+            assertThat(inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity())
+                .isEqualTo(afterOrder + 2);
         }
     }
 }
