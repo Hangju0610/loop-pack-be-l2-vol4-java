@@ -27,14 +27,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.doThrow;
 
-// AFTER_COMMIT + REQUIRES_NEW 리스너는 원 TX 커밋 이후에도 커넥션을 잠시 보유한다.
-// 10개 스레드가 동시 실행되면 커넥션 2배(20개)가 필요해 기본 풀(10)이 부족하므로
-// 동시성 테스트에 충분한 풀 크기를 확보한다.
-@SpringBootTest(properties = "datasource.mysql-jpa.main.maximum-pool-size=30")
+// @Async("likeCountExecutor") 전환 후 요청 스레드는 TX_like 커밋 즉시 커넥션을 반환한다.
+// 집계는 별도 풀(max 4)에서 실행되므로 커넥션 2배 점유가 사라져 기본 풀(10)로 충분하다.
+@SpringBootTest
 class LikeApplicationServiceIntegrationTest {
 
     @Autowired
@@ -84,9 +85,10 @@ class LikeApplicationServiceIntegrationTest {
             // act
             likeApplicationService.addLike(user.id(), product.id());
 
-            // assert
-            ProductInfo result = productApplicationService.getProduct(product.id());
-            assertEquals(1L, result.likeCount());
+            // assert: 비동기 집계 반영 대기
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertEquals(1L, productApplicationService.getProduct(product.id()).likeCount())
+            );
         }
 
         @DisplayName("[State Transition] soft-deleted 좋아요를 재등록하면 restore되고 likeCount가 1 증가한다.")
@@ -102,9 +104,10 @@ class LikeApplicationServiceIntegrationTest {
             // act
             likeApplicationService.addLike(user.id(), product.id());
 
-            // assert
-            ProductInfo result = productApplicationService.getProduct(product.id());
-            assertEquals(1L, result.likeCount());
+            // assert: +1 -1 +1 = 1이 비동기로 수렴할 때까지 대기
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertEquals(1L, productApplicationService.getProduct(product.id()).likeCount())
+            );
         }
 
         @DisplayName("[ECP] 이미 좋아요한 상품을 재등록하면 CONFLICT 예외가 발생한다.")
@@ -143,9 +146,10 @@ class LikeApplicationServiceIntegrationTest {
             // act
             likeApplicationService.removeLike(user.id(), product.id());
 
-            // assert
-            ProductInfo result = productApplicationService.getProduct(product.id());
-            assertEquals(0L, result.likeCount());
+            // assert: +1 -1 = 0이 비동기로 수렴할 때까지 대기
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertEquals(0L, productApplicationService.getProduct(product.id()).likeCount())
+            );
         }
 
         @DisplayName("[ECP] 좋아요하지 않은 상품을 취소하면 NOT_FOUND 예외가 발생한다.")
@@ -227,6 +231,9 @@ class LikeApplicationServiceIntegrationTest {
             // act: addLike는 집계 실패와 무관하게 정상 반환한다
             likeApplicationService.addLike(user.id(), product.id());
 
+            // assert: 비동기 리스너가 실제 실행되어 incrementLikeCount를 호출했음을 대기·검증
+            Mockito.verify(productRepository, Mockito.timeout(5000)).incrementLikeCount(product.id());
+
             // assert: 좋아요 원장이 커밋되어 있으므로 재등록 시 CONFLICT
             CoreException exception = assertThrows(CoreException.class,
                     () -> likeApplicationService.addLike(user.id(), product.id()));
@@ -244,11 +251,18 @@ class LikeApplicationServiceIntegrationTest {
             BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
             ProductInfo product = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 10);
             likeApplicationService.addLike(user.id(), product.id());
+            // increment 비동기 반영 대기 (decrement spy 설정 전 이전 이벤트 처리 완료 보장)
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertEquals(1L, productApplicationService.getProduct(product.id()).likeCount())
+            );
 
             doThrow(new RuntimeException("강제 실패")).when(productRepository).decrementLikeCount(product.id());
 
             // act: removeLike는 집계 실패와 무관하게 정상 반환한다
             likeApplicationService.removeLike(user.id(), product.id());
+
+            // assert: 비동기 리스너가 실제 실행되어 decrementLikeCount를 호출했음을 대기·검증
+            Mockito.verify(productRepository, Mockito.timeout(5000)).decrementLikeCount(product.id());
 
             // assert: 좋아요 취소가 커밋되어 있으므로 재취소 시 NOT_FOUND
             CoreException exception = assertThrows(CoreException.class,
@@ -306,9 +320,11 @@ class LikeApplicationServiceIntegrationTest {
 
             // assert: 모든 유저가 서로 다른 사용자이므로 threadCount개 모두 성공
             assertThat(successCount.get()).isEqualTo(threadCount);
-            // assert: likeCount가 성공 횟수와 정확히 일치 (lost update 없음)
-            assertThat(productApplicationService.getProduct(product.id()).likeCount())
-                    .isEqualTo((long) successCount.get());
+            // assert: 비동기 집계가 모두 반영될 때까지 대기 (lost update 없음)
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertThat(productApplicationService.getProduct(product.id()).likeCount())
+                            .isEqualTo((long) successCount.get())
+            );
         }
 
         @DisplayName("동일한 상품에 여러 사용자가 동시에 좋아요 취소를 요청해도 likeCount가 정확히 반영된다.")
@@ -324,6 +340,11 @@ class LikeApplicationServiceIntegrationTest {
                 users[i] = createUser("unlikeuser" + i);
                 likeApplicationService.addLike(users[i].id(), product.id());
             }
+            // 사전 addLike 비동기 집계 완료 대기
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertThat(productApplicationService.getProduct(product.id()).likeCount())
+                            .isEqualTo((long) threadCount)
+            );
 
             CountDownLatch startLatch = new CountDownLatch(1);
             CountDownLatch doneLatch = new CountDownLatch(threadCount);
@@ -351,9 +372,11 @@ class LikeApplicationServiceIntegrationTest {
 
             // assert: 모든 유저가 서로 다른 사용자이므로 threadCount개 모두 성공
             assertThat(successCount.get()).isEqualTo(threadCount);
-            // assert: likeCount = 초기값(threadCount) - 성공 횟수 (lost update 없음)
-            assertThat(productApplicationService.getProduct(product.id()).likeCount())
-                    .isEqualTo((long) threadCount - successCount.get());
+            // assert: 비동기 집계가 모두 반영될 때까지 대기 (lost update 없음)
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertThat(productApplicationService.getProduct(product.id()).likeCount())
+                            .isEqualTo((long) threadCount - successCount.get())
+            );
         }
 
         @DisplayName("10명이 동시에 좋아요/좋아요 취소를 요청해도 likeCount가 정확히 반영된다.")
@@ -376,6 +399,12 @@ class LikeApplicationServiceIntegrationTest {
                 usersToRemove[i] = createUser("removeuser" + i);
                 likeApplicationService.addLike(usersToRemove[i].id(), product.id());
             }
+
+            // 사전 addLike 비동기 집계 완료 대기
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertThat(productApplicationService.getProduct(product.id()).likeCount())
+                            .isEqualTo((long) prelikedCount)
+            );
 
             // 초기 likeCount = prelikedCount
             long initialLikeCount = productApplicationService.getProduct(product.id()).likeCount();
@@ -422,10 +451,12 @@ class LikeApplicationServiceIntegrationTest {
             doneLatch.await();
             executor.shutdown();
 
-            // assert: likeCount = 초기값 + 추가 성공 - 취소 성공 (lost update 없음)
+            // assert: 비동기 집계 반영 대기 — likeCount = 초기값 + 추가 성공 - 취소 성공 (lost update 없음)
             long expectedLikeCount = initialLikeCount + addSuccessCount.get() - removeSuccessCount.get();
-            assertThat(productApplicationService.getProduct(product.id()).likeCount())
-                    .isEqualTo(expectedLikeCount);
+            await().atMost(5, SECONDS).untilAsserted(() ->
+                    assertThat(productApplicationService.getProduct(product.id()).likeCount())
+                            .isEqualTo(expectedLikeCount)
+            );
         }
     }
 }
