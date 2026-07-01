@@ -54,9 +54,11 @@
 - `OrderEntity.cancel()` : `PENDING`에서만 `CANCELLED`로 전이, 그 외 상태는 `CoreException(BAD_REQUEST)`.
 - `InventoryEntity.restore(Integer amount)` : 수량 가산 복원(양수 검증).
 
-### FR-5. 정합성 경계
+### FR-5. 정합성 경계 (알려진 비내구성 구멍 수용)
 - 결제 확정(payment 애그리거트)과 보상(order/coupon/inventory)은 **서로 다른 트랜잭션**이다(AFTER_COMMIT).
-- 결제는 커밋되었으나 보상 리스너가 실패하면 자원 상태가 어긋날 수 있다 → **유실 방지(재처리/아웃박스)는 본 범위 밖(후속)**. 실패는 로깅한다.
+- **[성공 경로 심각]** in-process 이벤트는 트랜잭션 경계를 넘어 내구적이지 않다. 결제 SUCCESS 커밋 후 리스너 실행 전 크래시/리스너 실패 시 이벤트가 유실되고, `settle` first-wins 멱등 때문에 재-Poll로도 **재발행되지 않아 자동 복구 경로가 없다** → "결제됐으나 주문 PENDING·쿠폰 RESERVED 영구 고착" 가능. 실패 경로는 cleanup 회수 가능한 양성 구멍.
+- 본 스텝은 이 구멍을 **명시적으로 감수**하고 유실을 로깅/경보로 감지만 한다.
+- **해소는 후속 스텝의 Transactional Outbox + Kafka**로 진행한다(결제 확정과 이벤트 적재를 동일 TX 커밋 → 릴레이가 at-least-once 발행 → 소비자 멱등). 상세: [ADR-036](../adr/036-payment-event-compensation.md).
 
 ## 비기능 요구사항
 - 결제 도메인은 order/coupon/inventory 패키지를 **import하지 않는다**(정적 의존 검증 가능).
