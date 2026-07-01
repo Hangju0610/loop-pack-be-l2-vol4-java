@@ -289,5 +289,28 @@ public class InventoryEntityTest {
             // act & assert
             assertThrows(CoreException.class, () -> inventory.restore(null));
         }
+
+        @DisplayName("quantity + amount가 Integer 범위를 넘으면 음수 래핑 없이 예외가 발생한다.")
+        @Test
+        void restore_throwsException_whenSumOverflowsIntegerRange() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, Integer.MAX_VALUE - 1);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> inventory.restore(2));
+        }
+
+        @DisplayName("quantity + amount가 정확히 Integer.MAX_VALUE이면 정상 복원된다. (BVA)")
+        @Test
+        void restore_whenSumIsExactlyMaxValue() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, Integer.MAX_VALUE - 1);
+
+            // act
+            inventory.restore(1);
+
+            // assert
+            assertEquals(Integer.MAX_VALUE, inventory.getQuantity());
+        }
     }
 }
