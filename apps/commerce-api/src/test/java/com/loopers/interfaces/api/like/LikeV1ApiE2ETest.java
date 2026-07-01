@@ -18,7 +18,9 @@ import org.springframework.http.*;
 
 import java.time.LocalDate;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class LikeV1ApiE2ETest {
@@ -203,20 +205,24 @@ class LikeV1ApiE2ETest {
 
             ParameterizedTypeReference<ApiResponse<PageResult<LikeV1Dto.LikeResponse>>> type =
                     new ParameterizedTypeReference<>() {};
-            ResponseEntity<ApiResponse<PageResult<LikeV1Dto.LikeResponse>>> response =
-                    testRestTemplate.exchange(
-                            "/api/v1/users/" + userId + "/likes?page=0&size=20",
-                            HttpMethod.GET, new HttpEntity<>(userHeaders()), type
-                    );
 
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-            assertThat(response.getBody().data().totalElements()).isEqualTo(1);
-            LikeV1Dto.LikeResponse item = response.getBody().data().content().get(0);
-            assertThat(item.id()).isEqualTo(product.id());
-            assertThat(item.name()).isEqualTo("에어맥스");
-            assertThat(item.brandName()).isEqualTo("나이키");
-            assertThat(item.price()).isEqualTo(100_000L);
-            assertThat(item.likeCount()).isEqualTo(1L);
+            // 비동기 집계(likeCount)가 반영될 때까지 대기 후 검증
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                ResponseEntity<ApiResponse<PageResult<LikeV1Dto.LikeResponse>>> response =
+                        testRestTemplate.exchange(
+                                "/api/v1/users/" + userId + "/likes?page=0&size=20",
+                                HttpMethod.GET, new HttpEntity<>(userHeaders()), type
+                        );
+
+                assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+                assertThat(response.getBody().data().totalElements()).isEqualTo(1);
+                LikeV1Dto.LikeResponse item = response.getBody().data().content().get(0);
+                assertThat(item.id()).isEqualTo(product.id());
+                assertThat(item.name()).isEqualTo("에어맥스");
+                assertThat(item.brandName()).isEqualTo("나이키");
+                assertThat(item.price()).isEqualTo(100_000L);
+                assertThat(item.likeCount()).isEqualTo(1L);
+            });
         }
 
         @DisplayName("타인의 좋아요 목록을 조회하면 403을 반환한다.")

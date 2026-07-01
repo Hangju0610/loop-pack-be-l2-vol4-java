@@ -2,13 +2,16 @@ package com.loopers.application.like;
 
 import com.loopers.domain.brand.BrandEntity;
 import com.loopers.domain.brand.BrandRepository;
+import com.loopers.domain.like.LikeAddedEvent;
 import com.loopers.domain.like.LikeEntity;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.like.LikeRemovedEvent;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,7 @@ public class LikeApplicationService {
     private final LikeRepository likeRepository;
     private final ProductRepository productRepository;
     private final BrandRepository brandRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void addLike(String userId, String productId) {
@@ -40,7 +44,7 @@ public class LikeApplicationService {
         } else {
             likeRepository.save(new LikeEntity(userId, productId));
         }
-        productRepository.incrementLikeCount(productId);
+        eventPublisher.publishEvent(new LikeAddedEvent(userId, productId));
     }
 
     @Transactional
@@ -49,7 +53,7 @@ public class LikeApplicationService {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "좋아요 정보를 찾을 수 없습니다."));
         like.delete();
         likeRepository.save(like);
-        productRepository.decrementLikeCount(productId);
+        eventPublisher.publishEvent(new LikeRemovedEvent(userId, productId));
     }
 
     public Page<LikeInfo> getLikedProducts(String userId, Pageable pageable) {
