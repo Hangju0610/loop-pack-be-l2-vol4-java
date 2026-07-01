@@ -204,16 +204,16 @@ class LikeApplicationServiceIntegrationTest {
     }
 
     // ─────────────────────────────────────────────
-    // 트랜잭션 원자성
+    // 집계 실패 시 좋아요는 성공한다 (AC-6)
     // ─────────────────────────────────────────────
 
-    @DisplayName("트랜잭션 원자성")
+    @DisplayName("집계 실패 시 좋아요는 성공한다")
     @Nested
     class TransactionalAtomicity {
 
-        @DisplayName("[Transactional] 좋아요 등록 중 likeCount 증가 실패 시 like row도 함께 롤백된다.")
+        @DisplayName("[AC-6] 좋아요 집계 증가 실패 시 좋아요 원장은 커밋되어 존재한다.")
         @Test
-        void rollsBackLikeRow_whenLikeCountIncrementFails() {
+        void commitsLikeRow_whenLikeCountIncrementFails() {
             // arrange
             UserInfo user = createUser("testuser1");
             BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
@@ -221,21 +221,21 @@ class LikeApplicationServiceIntegrationTest {
 
             doThrow(new RuntimeException("강제 실패")).when(productRepository).incrementLikeCount(product.id());
 
-            // act
-            assertThrows(RuntimeException.class, () -> likeApplicationService.addLike(user.id(), product.id()));
+            // act: addLike는 집계 실패와 무관하게 정상 반환한다
+            likeApplicationService.addLike(user.id(), product.id());
 
-            // assert: like row가 롤백되어 active like가 없음 → removeLike는 NOT_FOUND
+            // assert: 좋아요 원장이 커밋되어 있으므로 재등록 시 CONFLICT
             CoreException exception = assertThrows(CoreException.class,
-                    () -> likeApplicationService.removeLike(user.id(), product.id()));
-            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+                    () -> likeApplicationService.addLike(user.id(), product.id()));
+            assertEquals(ErrorType.CONFLICT, exception.getErrorType());
 
-            // assert: likeCount도 롤백되어 0 유지
+            // assert: 집계 실패로 like_count는 원래값(0) 유지
             assertEquals(0L, productApplicationService.getProduct(product.id()).likeCount());
         }
 
-        @DisplayName("[Transactional] 좋아요 취소 중 likeCount 감소 실패 시 like soft-delete도 함께 롤백된다.")
+        @DisplayName("[AC-6] 좋아요 집계 감소 실패 시 좋아요 취소는 커밋되어 존재한다.")
         @Test
-        void rollsBackLikeSoftDelete_whenLikeCountDecrementFails() {
+        void commitsLikeSoftDelete_whenLikeCountDecrementFails() {
             // arrange
             UserInfo user = createUser("testuser1");
             BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
@@ -244,15 +244,15 @@ class LikeApplicationServiceIntegrationTest {
 
             doThrow(new RuntimeException("강제 실패")).when(productRepository).decrementLikeCount(product.id());
 
-            // act
-            assertThrows(RuntimeException.class, () -> likeApplicationService.removeLike(user.id(), product.id()));
+            // act: removeLike는 집계 실패와 무관하게 정상 반환한다
+            likeApplicationService.removeLike(user.id(), product.id());
 
-            // assert: soft-delete가 롤백되어 like가 여전히 active → addLike는 CONFLICT
+            // assert: 좋아요 취소가 커밋되어 있으므로 재취소 시 NOT_FOUND
             CoreException exception = assertThrows(CoreException.class,
-                    () -> likeApplicationService.addLike(user.id(), product.id()));
-            assertEquals(ErrorType.CONFLICT, exception.getErrorType());
+                    () -> likeApplicationService.removeLike(user.id(), product.id()));
+            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
 
-            // assert: likeCount도 롤백되어 1 유지
+            // assert: 집계 실패로 like_count는 원래값(1) 유지
             assertEquals(1L, productApplicationService.getProduct(product.id()).likeCount());
         }
     }
