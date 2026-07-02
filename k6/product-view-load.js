@@ -13,7 +13,7 @@ import { Counter } from 'k6/metrics';
 const BASE = __ENV.BASE_URL || 'http://localhost:8080';
 const RATE = Number(__ENV.RATE || 300);
 const DURATION = __ENV.DURATION || '1m';
-const PRODUCTS = Number(__ENV.PRODUCTS || 100);
+const PRODUCTS = Number(__ENV.PRODUCTS || 1);
 const RUN = __ENV.RUN_ID || `pv${Date.now()}`;
 const ITERATIONS = __ENV.ITERATIONS ? Number(__ENV.ITERATIONS) : null;
 const VUS = Number(__ENV.VUS || 100);
@@ -87,7 +87,7 @@ export function setup() {
 }
 
 export default function (data) {
-  const productId = data.productIds[Math.floor(Math.random() * data.productIds.length)];
+  const productId = data.productIds[0];
   const res = http.get(`${BASE}/api/v1/products/${productId}`, { headers: JSON_HDR });
 
   if (res.status === 200) {

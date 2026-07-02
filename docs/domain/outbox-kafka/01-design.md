@@ -46,7 +46,7 @@ CREATE TABLE outbox_events (
     event_type    VARCHAR(100)                             NOT NULL COMMENT '이벤트 클래스명',
     payload       JSON                                     NOT NULL COMMENT '이벤트 데이터 직렬화',
     topic         VARCHAR(200)                             NOT NULL COMMENT 'Kafka 토픽명',
-    partition_key VARCHAR(100)                             NOT NULL COMMENT 'Kafka 파티션 키 (productId / orderId)',
+    partition_key VARCHAR(100)                             NOT NULL COMMENT 'Kafka 파티션 키 (이벤트 타입별 전략 상이 — §3 참고)',
     status        ENUM('PENDING','PUBLISHED','FAILED')     NOT NULL DEFAULT 'PENDING',
     retry_count   INT                                      NOT NULL DEFAULT 0,
     created_at    DATETIME                                 NOT NULL,
@@ -60,18 +60,20 @@ CREATE TABLE outbox_events (
 
 ## 3. Kafka 토픽 설계
 
-| 이벤트 | topic | partition_key |
-|--------|-------|---------------|
-| `ProductViewedEvent` | `catalog-events` | productId |
-| `LikeAddedEvent` | `catalog-events` | productId |
-| `LikeRemovedEvent` | `catalog-events` | productId |
-| `OrderCreatedEvent` | `order-events` | orderId |
-| `PaymentCompleteEvent` | `order-events` | orderId |
-| `PaymentFailedEvent` | `order-events` | orderId |
+| 이벤트 | topic | partition_key | 전략 |
+|--------|-------|---------------|------|
+| `ProductViewedEvent` | `catalog-events` | `UUID.randomUUID()` | 균등 분산 |
+| `LikeAddedEvent` | `catalog-events` | productId | 순서 보장 |
+| `LikeRemovedEvent` | `catalog-events` | productId | 순서 보장 |
+| `OrderCreatedEvent` | `order-events` | orderId | 순서 보장 |
+| `PaymentCompleteEvent` | `order-events` | orderId | 순서 보장 |
+| `PaymentFailedEvent` | `order-events` | orderId | 순서 보장 |
 
-**파티션 키 선택 이유:**
-- `catalog-events` — 동일 상품의 조회/좋아요 이벤트가 같은 파티션으로 → 집계 순서 보장
-- `order-events` — 동일 주문의 생성/결제 이벤트가 같은 파티션으로 → purchase_count 집계 순서 보장
+**파티션 키 전략 원칙:** 같은 엔티티의 상태를 변경하는 이벤트만 동일 파티션 키를 사용한다. 순서 보장이 불필요한 이벤트는 균등 분산을 우선한다.
+
+- `ProductViewedEvent` — 조회수는 단순 증가(+1)이므로 처리 순서 무관. `productId` 사용 시 인기 상품에 핫파티션 발생 위험이 있어 `UUID`로 균등 분산.
+- `LikeAddedEvent` / `LikeRemovedEvent` — +1/-1이 혼재하므로 순서가 바뀌면 음수 발생 가능. 동일 상품의 좋아요 이벤트가 같은 파티션으로 → 순서 보장 (ADR-039 참고).
+- `order-events` — 동일 주문의 생성/결제 이벤트가 같은 파티션으로 → purchase_count 집계 순서 보장.
 
 **streamer의 order-events 처리 범위:**
 - `PaymentCompleteEvent` → `orders.snapshot.items` 조회 후 상품별 `product_metrics.purchase_count += quantity`
@@ -214,9 +216,9 @@ private void confirmSuccess(PaymentEntity payment) {
 
 | 이벤트 발행 위치 | 이벤트 | topic | partitionKey |
 |----------------|--------|-------|--------------|
-| `ProductApplicationService` | `ProductViewedEvent` | `catalog-events` | productId |
-| `LikeService` | `LikeAddedEvent` | `catalog-events` | productId |
-| `LikeService` | `LikeRemovedEvent` | `catalog-events` | productId |
+| `ProductApplicationService` | `ProductViewedEvent` | `catalog-events` | `UUID.randomUUID()` |
+| `LikeApplicationService` | `LikeAddedEvent` | `catalog-events` | productId |
+| `LikeApplicationService` | `LikeRemovedEvent` | `catalog-events` | productId |
 | `OrderService` | `OrderCreatedEvent` | `order-events` | orderId |
 | `PaymentService` | `PaymentCompleteEvent` | `order-events` | orderId |
 | `PaymentService` | `PaymentFailedEvent` | `order-events` | orderId |
@@ -309,3 +311,4 @@ infrastructure/metrics
 ## 10. 관련 ADR
 
 - `docs/adr/038-like-count-event-separation.md` — LikeCount 집계 이벤트 분리 결정
+- `docs/adr/039-kafka-partition-key-strategy.md` — catalog-events 이벤트별 파티션 키 전략 분리 (ProductViewedEvent UUID, Like* productId)

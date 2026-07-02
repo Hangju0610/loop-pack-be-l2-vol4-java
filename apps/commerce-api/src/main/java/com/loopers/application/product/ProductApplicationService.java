@@ -28,6 +28,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -68,7 +69,7 @@ public class ProductApplicationService {
     public ProductInfo getProductForCustomer(String id, String userId) {
         ProductInfo product = getProduct(id);
         ProductViewedEvent viewedEvent = new ProductViewedEvent(id, userId);
-        outboxEventRepository.createAndSave(viewedEvent, CATALOG_EVENTS_TOPIC, id);
+        outboxEventRepository.createAndSave(viewedEvent, CATALOG_EVENTS_TOPIC, UUID.randomUUID().toString());
         eventPublisher.publishEvent(viewedEvent);
         return product;
     }
