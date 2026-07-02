@@ -13,7 +13,7 @@ public class CouponTemplateMapper {
                 entity.getMinOrderAmount(),
                 entity.getExpiredAt(),
                 entity.getMaxIssueCount(),
-                entity.getIssuedCount() != null ? entity.getIssuedCount() : 0L,
+                entity.getIssuedCount(),
                 entity.getDeletedAt()
         );
     }

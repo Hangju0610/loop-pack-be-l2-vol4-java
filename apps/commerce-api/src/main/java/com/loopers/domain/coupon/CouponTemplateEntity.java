@@ -42,7 +42,7 @@ public class CouponTemplateEntity extends BaseEntity {
         entity.minOrderAmount = minOrderAmount;
         entity.expiredAt = expiredAt;
         entity.maxIssueCount = maxIssueCount;
-        entity.issuedCount = issuedCount;
+        entity.issuedCount = issuedCount != null ? issuedCount : 0L;
         entity.reconstruct(id, createdAt, updatedAt, deletedAt);
         return entity;
     }
