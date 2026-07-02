@@ -54,4 +54,8 @@ public class CouponTemplateJpaEntity extends BaseJpaEntity {
     public void incrementIssuedCount() {
         this.issuedCount += 1;
     }
+
+    public void updateIssuedCount(long issuedCount) {
+        this.issuedCount = issuedCount;
+    }
 }

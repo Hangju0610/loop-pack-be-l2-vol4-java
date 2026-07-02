@@ -2,13 +2,12 @@ package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.confg.kafka.KafkaConfig;
+import com.loopers.domain.coupon.CouponEntity;
+import com.loopers.domain.coupon.CouponIssueRequestRepository;
+import com.loopers.domain.coupon.CouponRepository;
+import com.loopers.domain.coupon.CouponTemplateEntity;
+import com.loopers.domain.coupon.CouponTemplateRepository;
 import com.loopers.domain.handled.EventHandledRepository;
-import com.loopers.infrastructure.coupon.CouponIssueRequestJpaRepository;
-import com.loopers.infrastructure.coupon.CouponIssueRequestStatus;
-import com.loopers.infrastructure.coupon.CouponJpaEntity;
-import com.loopers.infrastructure.coupon.CouponJpaRepository;
-import com.loopers.infrastructure.coupon.CouponTemplateJpaEntity;
-import com.loopers.infrastructure.coupon.CouponTemplateJpaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -27,9 +26,9 @@ public class CouponIssueConsumer {
     private static final String CONSUMER_GROUP = "coupon-issue-consumer";
 
     private final EventHandledRepository eventHandledRepository;
-    private final CouponTemplateJpaRepository couponTemplateJpaRepository;
-    private final CouponJpaRepository couponJpaRepository;
-    private final CouponIssueRequestJpaRepository couponIssueRequestJpaRepository;
+    private final CouponTemplateRepository couponTemplateRepository;
+    private final CouponRepository couponRepository;
+    private final CouponIssueRequestRepository couponIssueRequestRepository;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(
@@ -67,29 +66,34 @@ public class CouponIssueConsumer {
             return;
         }
 
-        if (couponJpaRepository.existsByUserIdAndCouponTemplateId(userId, templateId)) {
-            updateRequestStatus(requestId, CouponIssueRequestStatus.SUCCESS, null);
+        if (couponRepository.existsByUserIdAndCouponTemplateId(userId, templateId)) {
+            updateRequest(requestId, true, null);
             return;
         }
 
-        CouponTemplateJpaEntity template = couponTemplateJpaRepository.findByIdWithLock(templateId)
+        CouponTemplateEntity template = couponTemplateRepository.findByIdWithLock(templateId)
                 .orElseThrow(() -> new IllegalStateException("쿠폰 템플릿을 찾을 수 없습니다: " + templateId));
 
         if (template.isAtCapacity()) {
             log.info("쿠폰 수량 초과 [templateId={}, requestId={}]", templateId, requestId);
-            updateRequestStatus(requestId, CouponIssueRequestStatus.FAILED, "수량이 초과되었습니다.");
+            updateRequest(requestId, false, "수량이 초과되었습니다.");
             return;
         }
 
-        couponJpaRepository.save(new CouponJpaEntity(userId, templateId));
+        couponRepository.save(new CouponEntity(userId, templateId));
         template.incrementIssuedCount();
-        updateRequestStatus(requestId, CouponIssueRequestStatus.SUCCESS, null);
+        couponTemplateRepository.save(template);
+        updateRequest(requestId, true, null);
     }
 
-    private void updateRequestStatus(String requestId, CouponIssueRequestStatus status, String failReason) {
-        couponIssueRequestJpaRepository.findById(requestId).ifPresent(req -> {
-            req.updateStatus(status, failReason);
-            couponIssueRequestJpaRepository.save(req);
+    private void updateRequest(String requestId, boolean success, String failReason) {
+        couponIssueRequestRepository.findById(requestId).ifPresent(request -> {
+            if (success) {
+                request.markSuccess();
+            } else {
+                request.markFailed(failReason);
+            }
+            couponIssueRequestRepository.save(request);
         });
     }
 }
