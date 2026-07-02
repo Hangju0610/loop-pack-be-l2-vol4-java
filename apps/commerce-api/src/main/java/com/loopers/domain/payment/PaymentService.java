@@ -1,5 +1,6 @@
 package com.loopers.domain.payment;
 
+import com.loopers.domain.outbox.OutboxEventRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class PaymentService {
 
+    private static final String ORDER_EVENTS_TOPIC = "order-events";
+
     private final PaymentRepository paymentRepository;
+    private final OutboxEventRepository outboxEventRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     /** 결제 중복 체크 + PENDING 저장. 주문 락/검증은 코디네이터가 선행한다(같은 TX). */
@@ -83,7 +87,9 @@ public class PaymentService {
         }
         payment.approve();
         paymentRepository.save(payment);
-        eventPublisher.publishEvent(new PaymentSucceeded(payment.getOrderId()));
+        PaymentCompleteEvent completeEvent = new PaymentCompleteEvent(payment.getUserId(), payment.getOrderId());
+        outboxEventRepository.createAndSave(completeEvent, ORDER_EVENTS_TOPIC, payment.getOrderId());
+        eventPublisher.publishEvent(completeEvent);
     }
 
     /** 확정=발행 funnel: 실제 PENDING→FAILED 전이가 일어난 경우에만 이벤트를 발행한다. */
@@ -93,6 +99,8 @@ public class PaymentService {
         }
         payment.fail(reason);
         paymentRepository.save(payment);
-        eventPublisher.publishEvent(new PaymentFailed(payment.getOrderId(), reason));
+        PaymentFailedEvent failedEvent = new PaymentFailedEvent(payment.getUserId(), payment.getOrderId(), reason);
+        outboxEventRepository.createAndSave(failedEvent, ORDER_EVENTS_TOPIC, payment.getOrderId());
+        eventPublisher.publishEvent(failedEvent);
     }
 }

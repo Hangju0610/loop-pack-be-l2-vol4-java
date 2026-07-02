@@ -12,7 +12,6 @@ public class ProductEntity extends BaseEntity {
     private String name;
     private String description;
     private Long price;
-    private Long likeCount;
 
     protected ProductEntity() {}
 
@@ -25,40 +24,23 @@ public class ProductEntity extends BaseEntity {
         this.name = name;
         this.description = description;
         this.price = price;
-        this.likeCount = 0L;
     }
 
-    public static ProductEntity of(String id, String brandId, String name, String description, Long price, Long likeCount,
+    public static ProductEntity of(String id, String brandId, String name, String description, Long price,
             ZonedDateTime createdAt, ZonedDateTime updatedAt, ZonedDateTime deletedAt) {
         ProductEntity model = new ProductEntity();
         model.brandId = brandId;
         model.name = name;
         model.description = description;
         model.price = price;
-        model.likeCount = likeCount;
         model.reconstruct(id, createdAt, updatedAt, deletedAt);
         return model;
     }
 
-    public String getBrandId() {
-        return brandId;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public Long getPrice() {
-        return price;
-    }
-
-    public Long getLikeCount() {
-        return likeCount;
-    }
+    public String getBrandId() { return brandId; }
+    public String getName() { return name; }
+    public String getDescription() { return description; }
+    public Long getPrice() { return price; }
 
     public void update(String newName, String newDescription, Long newPrice) {
         validateName(newName);

@@ -9,6 +9,7 @@ import com.loopers.domain.order.OrderRepository;
 import com.loopers.domain.order.OrderSnapshot;
 import com.loopers.domain.order.OrderSnapshotItem;
 import com.loopers.domain.order.OrderStatus;
+import com.loopers.domain.outbox.OutboxEventRepository;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.support.error.CoreException;
@@ -30,10 +31,13 @@ import java.util.stream.Collectors;
 @Service
 public class OrderApplicationService {
 
+    private static final String ORDER_EVENTS_TOPIC = "order-events";
+
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final InventoryRepository inventoryRepository;
     private final CouponApplicationService couponApplicationService;
+    private final OutboxEventRepository outboxEventRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -68,7 +72,9 @@ public class OrderApplicationService {
         OrderSnapshot snapshot = new OrderSnapshot(snapshotItems, originalAmount, discountAmount,
                 originalAmount - discountAmount, couponId);
         OrderInfo order = OrderInfo.from(orderRepository.save(new OrderEntity(userId, snapshot)));
-        eventPublisher.publishEvent(new OrderCreatedEvent(userId, order.orderId()));
+        OrderCreatedEvent createdEvent = new OrderCreatedEvent(userId, order.orderId());
+        outboxEventRepository.createAndSave(createdEvent, ORDER_EVENTS_TOPIC, order.orderId());
+        eventPublisher.publishEvent(createdEvent);
         return order;
     }
 

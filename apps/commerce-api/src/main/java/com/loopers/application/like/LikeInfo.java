@@ -1,7 +1,6 @@
 package com.loopers.application.like;
 
 import com.loopers.domain.brand.BrandEntity;
-import com.loopers.domain.inventory.InventoryEntity;
 import com.loopers.domain.product.ProductEntity;
 
 public record LikeInfo(
@@ -19,7 +18,7 @@ public record LikeInfo(
             brand.getName(),
             product.getName(),
             product.getPrice(),
-            product.getLikeCount()
+            0L
         );
     }
 }

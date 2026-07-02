@@ -1,7 +1,10 @@
 package com.loopers.application.useractivity;
 
 import com.loopers.domain.like.LikeAddedEvent;
+import com.loopers.domain.like.LikeRemovedEvent;
 import com.loopers.domain.order.OrderCreatedEvent;
+import com.loopers.domain.payment.PaymentCompleteEvent;
+import com.loopers.domain.payment.PaymentFailedEvent;
 import com.loopers.domain.product.ProductViewedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -23,15 +26,33 @@ public class UserActivityLogEventListener {
                 userId, PRODUCT_TARGET_TYPE, event.productId());
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onLikeAdded(LikeAddedEvent event) {
         log.info("user_activity type=PRODUCT_LIKE userId={} targetType={} targetId={}",
                 event.userId(), PRODUCT_TARGET_TYPE, event.productId());
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onLikeRemoved(LikeRemovedEvent event) {
+        log.info("user_activity type=PRODUCT_LIKE_REMOVE userId={} targetType={} targetId={}",
+                event.userId(), PRODUCT_TARGET_TYPE, event.productId());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onOrderCreated(OrderCreatedEvent event) {
         log.info("user_activity type=ORDER_CREATED userId={} targetType={} targetId={}",
+                event.userId(), ORDER_TARGET_TYPE, event.orderId());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onPaymentComplete(PaymentCompleteEvent event) {
+        log.info("user_activity type=PAYMENT_COMPLETE userId={} targetType={} targetId={}",
+                event.userId(), ORDER_TARGET_TYPE, event.orderId());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onPaymentFailed(PaymentFailedEvent event) {
+        log.info("user_activity type=PAYMENT_FAILED userId={} targetType={} targetId={}",
                 event.userId(), ORDER_TARGET_TYPE, event.orderId());
     }
 }

@@ -31,8 +31,7 @@ public class ProductEntityTest {
                 () -> assertEquals(VALID_BRAND_ID, product.getBrandId()),
                 () -> assertEquals(VALID_NAME, product.getName()),
                 () -> assertEquals(VALID_DESCRIPTION, product.getDescription()),
-                () -> assertEquals(VALID_PRICE, product.getPrice()),
-                () -> assertEquals(0L, product.getLikeCount())
+                () -> assertEquals(VALID_PRICE, product.getPrice())
             );
         }
 

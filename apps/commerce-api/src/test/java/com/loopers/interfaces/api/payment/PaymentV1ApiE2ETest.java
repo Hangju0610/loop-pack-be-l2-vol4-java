@@ -32,7 +32,9 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -393,15 +395,17 @@ class PaymentV1ApiE2ETest {
 
             // assert
             assertThat(callbackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-            assertThat(orderApplicationService.getOrder(userId, cbOrderId).status())
-                .isEqualTo(OrderStatus.CANCELLED);
-            CouponStatus couponStatus = couponApplicationService
-                .getMyCoupons(userId, org.springframework.data.domain.PageRequest.of(0, 50))
-                .stream().filter(c -> c.couponId().equals(couponId))
-                .map(com.loopers.application.coupon.CouponInfo::status).findFirst().orElseThrow();
-            assertThat(couponStatus).isEqualTo(CouponStatus.AVAILABLE);
-            assertThat(inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity())
-                .isEqualTo(afterOrder + 2);
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, cbOrderId).status())
+                    .isEqualTo(OrderStatus.CANCELLED);
+                CouponStatus couponStatus = couponApplicationService
+                    .getMyCoupons(userId, org.springframework.data.domain.PageRequest.of(0, 50))
+                    .stream().filter(c -> c.couponId().equals(couponId))
+                    .map(com.loopers.application.coupon.CouponInfo::status).findFirst().orElseThrow();
+                assertThat(couponStatus).isEqualTo(CouponStatus.AVAILABLE);
+                assertThat(inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity())
+                    .isEqualTo(afterOrder + 2);
+            });
         }
 
         @DisplayName("금액이 불일치하는 콜백은 400으로 거부되고 보상이 일어나지 않는다(주문 PENDING·쿠폰 RESERVED·재고 유지).")

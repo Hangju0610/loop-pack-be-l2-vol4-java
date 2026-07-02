@@ -18,7 +18,7 @@ public record ProductInfo(
     ZonedDateTime createdAt,
     ZonedDateTime updatedAt
 ) {
-    public static ProductInfo from(ProductEntity product, BrandEntity brand, InventoryEntity inventory) {
+    public static ProductInfo from(ProductEntity product, BrandEntity brand, InventoryEntity inventory, long likeCount) {
         return new ProductInfo(
             product.getId(),
             product.getBrandId(),
@@ -26,7 +26,7 @@ public record ProductInfo(
             product.getName(),
             product.getDescription(),
             product.getPrice(),
-            product.getLikeCount(),
+            likeCount,
             inventory.getQuantity(),
             product.getCreatedAt(),
             product.getUpdatedAt()

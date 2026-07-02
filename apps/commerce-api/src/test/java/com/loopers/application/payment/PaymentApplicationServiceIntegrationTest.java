@@ -27,7 +27,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import java.time.LocalDate;
 import java.util.List;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -377,8 +379,10 @@ class PaymentApplicationServiceIntegrationTest {
 
             paymentApplicationService.processCallback("TX-C1", PgTransactionStatus.SUCCESS, null);
 
-            assertThat(orderApplicationService.getOrder(userId, cbOrderId).status()).isEqualTo(OrderStatus.PAID);
-            assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, cbOrderId).status()).isEqualTo(OrderStatus.PAID);
+                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
+            });
             assertThat(inventoryQuantity()).isEqualTo(afterOrder); // 성공 시 재고 복원 없음
         }
 
@@ -394,9 +398,11 @@ class PaymentApplicationServiceIntegrationTest {
 
             paymentApplicationService.processCallback("TX-C2", PgTransactionStatus.FAILED, "한도 초과");
 
-            assertThat(orderApplicationService.getOrder(userId, cbOrderId).status()).isEqualTo(OrderStatus.CANCELLED);
-            assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
-            assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2); // 차감분 2 복원
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, cbOrderId).status()).isEqualTo(OrderStatus.CANCELLED);
+                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
+                assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2); // 차감분 2 복원
+            });
         }
 
         @DisplayName("동시 정산: SUCCESS와 FAILED 콜백이 경합해도 결제-주문 상태가 일관된다(split-brain 없음).")
@@ -415,16 +421,18 @@ class PaymentApplicationServiceIntegrationTest {
             java.util.concurrent.CompletableFuture.allOf(success, failed).join();
 
             PaymentStatus paymentStatus = paymentApplicationService.getPaymentByTransactionKey("TX-RACE").status();
-            OrderStatus orderStatus = orderApplicationService.getOrder(userId, cbOrderId).status();
             // 락으로 정확히 한 전이만 확정 → 결제와 주문이 짝지어진 일관 상태여야 한다.
-            if (paymentStatus == PaymentStatus.SUCCESS) {
-                assertThat(orderStatus).isEqualTo(OrderStatus.PAID);
-                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
-            } else {
-                assertThat(paymentStatus).isEqualTo(PaymentStatus.FAILED);
-                assertThat(orderStatus).isEqualTo(OrderStatus.CANCELLED);
-                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
-            }
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                OrderStatus orderStatus = orderApplicationService.getOrder(userId, cbOrderId).status();
+                if (paymentStatus == PaymentStatus.SUCCESS) {
+                    assertThat(orderStatus).isEqualTo(OrderStatus.PAID);
+                    assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
+                } else {
+                    assertThat(paymentStatus).isEqualTo(PaymentStatus.FAILED);
+                    assertThat(orderStatus).isEqualTo(OrderStatus.CANCELLED);
+                    assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
+                }
+            });
         }
 
         @DisplayName("AC-3: 쿠폰 없는 주문 결제 실패도 주문 CANCELLED, 재고 복원(쿠폰 단계 skip).")
@@ -438,8 +446,10 @@ class PaymentApplicationServiceIntegrationTest {
 
             paymentApplicationService.processCallback("TX-C3", PgTransactionStatus.FAILED, "한도 초과");
 
-            assertThat(orderApplicationService.getOrder(userId, noCouponOrderId).status()).isEqualTo(OrderStatus.CANCELLED);
-            assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2);
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, noCouponOrderId).status()).isEqualTo(OrderStatus.CANCELLED);
+                assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2);
+            });
         }
     }
 

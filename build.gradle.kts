@@ -80,7 +80,9 @@ subprojects {
 
     tasks.test {
         maxParallelForks = 1
-        useJUnitPlatform()
+        useJUnitPlatform {
+            excludeTags("performance")
+        }
         systemProperty("user.timezone", "Asia/Seoul")
         systemProperty("spring.profiles.active", "test")
         jvmArgs("-Xshare:off")

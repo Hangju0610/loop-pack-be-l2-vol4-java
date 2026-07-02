@@ -7,6 +7,9 @@ import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.inventory.InventoryEntity;
 import com.loopers.domain.inventory.InventoryRepository;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.metrics.ProductMetricsEntity;
+import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.outbox.OutboxEventRepository;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductViewedEvent;
@@ -35,12 +38,15 @@ public class ProductApplicationService {
 
     private static final String CACHE_PREFIX = "products:list::";
     private static final Duration CACHE_TTL = Duration.ofMinutes(1);
+    private static final String CATALOG_EVENTS_TOPIC = "catalog-events";
 
     private final ProductRepository productRepository;
     private final BrandRepository brandRepository;
     private final InventoryRepository inventoryRepository;
     private final LikeRepository likeRepository;
     private final ProductQueryRepository productQueryRepository;
+    private final ProductMetricsRepository productMetricsRepository;
+    private final OutboxEventRepository outboxEventRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -51,16 +57,19 @@ public class ProductApplicationService {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "브랜드를 찾을 수 없습니다."));
         ProductEntity product = productRepository.save(new ProductEntity(brandId, name, description, price));
         InventoryEntity inventory = inventoryRepository.save(new InventoryEntity(product.getId(), quantity));
-        return ProductInfo.from(product, brand, inventory);
+        return ProductInfo.from(product, brand, inventory, 0L);
     }
 
     public ProductInfo getProduct(String id) {
         return assembleProductInfo(findProductOrThrow(id));
     }
 
+    @Transactional
     public ProductInfo getProductForCustomer(String id, String userId) {
         ProductInfo product = getProduct(id);
-        eventPublisher.publishEvent(new ProductViewedEvent(id, userId));
+        ProductViewedEvent viewedEvent = new ProductViewedEvent(id, userId);
+        outboxEventRepository.createAndSave(viewedEvent, CATALOG_EVENTS_TOPIC, id);
+        eventPublisher.publishEvent(viewedEvent);
         return product;
     }
 
@@ -95,7 +104,6 @@ public class ProductApplicationService {
     private Page<ProductInfo> getPage0WithCache(String brandId, Pageable pageable) {
         String key = buildCacheKey(brandId, pageable);
 
-        // Look-aside: 캐시 조회
         String cached = redisTemplate.opsForValue().get(key);
         if (cached != null) {
             try {
@@ -105,7 +113,6 @@ public class ProductApplicationService {
             }
         }
 
-        // 캐시 미스: DB 조회 후 캐시 저장
         Page<ProductInfo> result = queryFromDb(brandId, pageable);
         try {
             String json = objectMapper.writeValueAsString(ProductListCache.from(result));
@@ -118,7 +125,12 @@ public class ProductApplicationService {
     }
 
     private Page<ProductInfo> queryFromDb(String brandId, Pageable pageable) {
-        // [Batch] IN 쿼리 배치 조회 방식 (3 쿼리)
+        boolean hasLikeCountSort = pageable.getSort().stream()
+                .anyMatch(order -> "likeCount".equals(order.getProperty()));
+        if (hasLikeCountSort) {
+            return productQueryRepository.findAllWithDetails(brandId, pageable);
+        }
+
         Page<ProductEntity> products = productRepository.findAll(brandId, pageable);
 
         List<String> brandIds = products.stream().map(ProductEntity::getBrandId).distinct().toList();
@@ -128,21 +140,21 @@ public class ProductApplicationService {
                 .collect(Collectors.toMap(BrandEntity::getId, Function.identity()));
         Map<String, InventoryEntity> inventoryMap = inventoryRepository.findAllByProductIds(productIds).stream()
                 .collect(Collectors.toMap(InventoryEntity::getProductId, Function.identity()));
+        Map<String, Long> metricsMap = productMetricsRepository.findAllByProductIds(productIds).stream()
+                .collect(Collectors.toMap(ProductMetricsEntity::getProductId, ProductMetricsEntity::getLikeCount));
 
         return products.map(product -> {
             BrandEntity brand = Optional.ofNullable(brandMap.get(product.getBrandId()))
                     .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "브랜드를 찾을 수 없습니다."));
             InventoryEntity inventory = Optional.ofNullable(inventoryMap.get(product.getId()))
                     .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "[productId = " + product.getId() + "] 재고를 찾을 수 없습니다."));
-            return ProductInfo.from(product, brand, inventory);
+            long likeCount = metricsMap.getOrDefault(product.getId(), 0L);
+            return ProductInfo.from(product, brand, inventory, likeCount);
         });
-
-        // [JOIN] QueryDSL 단일 쿼리 방식 — 비교 테스트용
-        // return productQueryRepository.findAllWithDetails(brandId, pageable);
     }
 
     private String buildCacheKey(String brandId, Pageable pageable) {
-        String brandPart = brandId != null ? brandId.toString() : "all";
+        String brandPart = brandId != null ? brandId : "all";
         return CACHE_PREFIX + brandPart + "::" + pageable.getSort().toString();
     }
 
@@ -151,7 +163,10 @@ public class ProductApplicationService {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "브랜드를 찾을 수 없습니다."));
         InventoryEntity inventory = inventoryRepository.findByProductId(product.getId())
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "[productId = " + product.getId() + "] 재고를 찾을 수 없습니다."));
-        return ProductInfo.from(product, brand, inventory);
+        long likeCount = productMetricsRepository.findByProductId(product.getId())
+                .map(ProductMetricsEntity::getLikeCount)
+                .orElse(0L);
+        return ProductInfo.from(product, brand, inventory, likeCount);
     }
 
     private ProductEntity findProductOrThrow(String id) {

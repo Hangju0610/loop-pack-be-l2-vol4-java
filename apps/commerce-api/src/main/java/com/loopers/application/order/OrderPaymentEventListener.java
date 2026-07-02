@@ -1,7 +1,7 @@
 package com.loopers.application.order;
 
-import com.loopers.domain.payment.PaymentFailed;
-import com.loopers.domain.payment.PaymentSucceeded;
+import com.loopers.domain.payment.PaymentCompleteEvent;
+import com.loopers.domain.payment.PaymentFailedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -24,7 +24,7 @@ public class OrderPaymentEventListener {
 
     @Async("orderEventExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onPaymentSucceeded(PaymentSucceeded event) {
+    public void onPaymentSucceeded(PaymentCompleteEvent event) {
         try {
             orderApplicationService.completePaidOrder(event.orderId());
         } catch (Exception e) {
@@ -34,7 +34,7 @@ public class OrderPaymentEventListener {
 
     @Async("orderEventExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onPaymentFailed(PaymentFailed event) {
+    public void onPaymentFailed(PaymentFailedEvent event) {
         try {
             orderApplicationService.compensateFailedOrder(event.orderId());
         } catch (Exception e) {
