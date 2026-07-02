@@ -1,7 +1,9 @@
 package com.loopers.interfaces.api.coupon;
 
 import com.loopers.application.coupon.CouponApplicationService;
+import com.loopers.application.coupon.CouponIssueRequestInfo;
 import com.loopers.application.coupon.CouponTemplateInfo;
+import com.loopers.domain.coupon.CouponIssueRequestStatus;
 import com.loopers.domain.coupon.CouponStatus;
 import com.loopers.domain.coupon.CouponTemplateEntity;
 import com.loopers.domain.coupon.CouponType;
@@ -33,6 +35,7 @@ class CouponV1ApiE2ETest {
     private static final String DEFAULT_PASSWORD = "Test1234!";
 
     private static final String ENDPOINT_COUPONS = "/api/v1/coupons";
+    private static final String ENDPOINT_COUPON_REQUESTS = "/api/v1/coupons/requests";
     private static final String ENDPOINT_MY_COUPONS = "/api/v1/users/me/coupons";
 
     private final TestRestTemplate testRestTemplate;
@@ -77,7 +80,7 @@ class CouponV1ApiE2ETest {
         CouponTemplateEntity expiredTemplate = CouponTemplateEntity.of(
                 null, "만료된 쿠폰", CouponType.FIXED, 1000L, null,
                 ZonedDateTime.now().minusDays(1),
-                null, null, null
+                null, null, null, null, null
         );
         return couponTemplateJpaRepository.save(CouponTemplateMapper.toJpaEntity(expiredTemplate)).getId();
     }
@@ -97,26 +100,48 @@ class CouponV1ApiE2ETest {
     @Nested
     class IssueCoupon {
 
-        @DisplayName("유효한 요청이면 201과 발급된 쿠폰을 반환한다.")
+        @DisplayName("유효한 요청이면 202와 requestId를 반환한다.")
         @Test
-        void returnsCreated_whenRequestIsValid() {
+        void returnsAccepted_withRequestId_whenRequestIsValid() {
             // arrange
             createUser();
             CouponTemplateInfo template = createTemplate();
 
             // act
-            ParameterizedTypeReference<ApiResponse<CouponV1Dto.IssueCouponResponse>> type =
+            ParameterizedTypeReference<ApiResponse<CouponV1Dto.IssueRequestResponse>> type =
                     new ParameterizedTypeReference<>() {};
-            ResponseEntity<ApiResponse<CouponV1Dto.IssueCouponResponse>> response =
+            ResponseEntity<ApiResponse<CouponV1Dto.IssueRequestResponse>> response =
                     testRestTemplate.exchange(
                             ENDPOINT_COUPONS + "/" + template.templateId() + "/issue",
                             HttpMethod.POST, new HttpEntity<>(userHeaders()), type
                     );
 
             // assert
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-            assertThat(response.getBody().data().couponId()).isNotNull();
-            assertThat(response.getBody().data().status()).isEqualTo(CouponStatus.AVAILABLE);
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+            assertThat(response.getBody().data().requestId()).isNotNull();
+        }
+
+        @DisplayName("동일 유저가 동일 템플릿으로 중복 요청 시 409를 반환한다.")
+        @Test
+        void returnsConflict_whenDuplicateRequest() {
+            // arrange
+            createUser();
+            CouponTemplateInfo template = createTemplate();
+            testRestTemplate.exchange(
+                    ENDPOINT_COUPONS + "/" + template.templateId() + "/issue",
+                    HttpMethod.POST, new HttpEntity<>(userHeaders()),
+                    new ParameterizedTypeReference<ApiResponse<CouponV1Dto.IssueRequestResponse>>() {}
+            );
+
+            // act
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response = testRestTemplate.exchange(
+                    ENDPOINT_COUPONS + "/" + template.templateId() + "/issue",
+                    HttpMethod.POST, new HttpEntity<>(userHeaders()), type
+            );
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         }
 
         @DisplayName("인증 헤더 없이 요청하면 401을 반환한다.")
@@ -172,6 +197,45 @@ class CouponV1ApiE2ETest {
 
             // assert
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // GET /api/v1/coupons/requests/{requestId}
+    // ─────────────────────────────────────────────
+
+    @DisplayName("GET /api/v1/coupons/requests/{requestId}")
+    @Nested
+    class GetIssueRequestStatus {
+
+        @DisplayName("requestId로 조회 시 200과 발급 요청 상태를 반환한다.")
+        @Test
+        void returnsOk_withRequestStatus_whenRequestIsFound() {
+            // arrange
+            createUser();
+            CouponTemplateInfo template = createTemplate();
+            ParameterizedTypeReference<ApiResponse<CouponV1Dto.IssueRequestResponse>> issueType =
+                    new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<CouponV1Dto.IssueRequestResponse>> issueResponse =
+                    testRestTemplate.exchange(
+                            ENDPOINT_COUPONS + "/" + template.templateId() + "/issue",
+                            HttpMethod.POST, new HttpEntity<>(userHeaders()), issueType
+                    );
+            String requestId = issueResponse.getBody().data().requestId();
+
+            // act
+            ParameterizedTypeReference<ApiResponse<CouponV1Dto.IssueRequestStatusResponse>> type =
+                    new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<CouponV1Dto.IssueRequestStatusResponse>> response =
+                    testRestTemplate.exchange(
+                            ENDPOINT_COUPON_REQUESTS + "/" + requestId,
+                            HttpMethod.GET, new HttpEntity<>(userHeaders()), type
+                    );
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody().data().requestId()).isEqualTo(requestId);
+            assertThat(response.getBody().data().status()).isEqualTo(CouponIssueRequestStatus.PENDING);
         }
     }
 

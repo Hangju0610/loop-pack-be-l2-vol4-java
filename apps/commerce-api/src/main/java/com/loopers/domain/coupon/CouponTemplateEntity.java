@@ -13,6 +13,8 @@ public class CouponTemplateEntity extends BaseEntity {
     private Long value;
     private Long minOrderAmount;
     private ZonedDateTime expiredAt;
+    private Long maxIssueCount;
+    private Long issuedCount;
 
     protected CouponTemplateEntity() {}
 
@@ -27,16 +29,20 @@ public class CouponTemplateEntity extends BaseEntity {
         this.value = value;
         this.minOrderAmount = minOrderAmount;
         this.expiredAt = expiredAt;
+        this.issuedCount = 0L;
     }
 
     public static CouponTemplateEntity of(String id, String name, CouponType type, Long value, Long minOrderAmount,
-            ZonedDateTime expiredAt, ZonedDateTime createdAt, ZonedDateTime updatedAt, ZonedDateTime deletedAt) {
+            ZonedDateTime expiredAt, Long maxIssueCount, Long issuedCount,
+            ZonedDateTime createdAt, ZonedDateTime updatedAt, ZonedDateTime deletedAt) {
         CouponTemplateEntity entity = new CouponTemplateEntity();
         entity.name = name;
         entity.type = type;
         entity.value = value;
         entity.minOrderAmount = minOrderAmount;
         entity.expiredAt = expiredAt;
+        entity.maxIssueCount = maxIssueCount;
+        entity.issuedCount = issuedCount;
         entity.reconstruct(id, createdAt, updatedAt, deletedAt);
         return entity;
     }
@@ -59,6 +65,21 @@ public class CouponTemplateEntity extends BaseEntity {
 
     public ZonedDateTime getExpiredAt() {
         return expiredAt;
+    }
+
+    public Long getMaxIssueCount() {
+        return maxIssueCount;
+    }
+
+    public Long getIssuedCount() {
+        return issuedCount;
+    }
+
+    public boolean isAtCapacity() {
+        if (maxIssueCount == null) {
+            return false;
+        }
+        return issuedCount >= maxIssueCount;
     }
 
     public boolean isExpired() {

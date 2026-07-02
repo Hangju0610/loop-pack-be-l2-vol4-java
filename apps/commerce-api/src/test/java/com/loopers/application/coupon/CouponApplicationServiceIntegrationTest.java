@@ -1,9 +1,11 @@
 package com.loopers.application.coupon;
 
+import com.loopers.domain.coupon.CouponIssueRequestStatus;
 import com.loopers.domain.coupon.CouponStatus;
 import com.loopers.domain.coupon.CouponType;
 import com.loopers.application.user.UserApplicationService;
 import com.loopers.application.user.UserInfo;
+import com.loopers.infrastructure.outbox.OutboxEventJpaRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -36,6 +38,9 @@ class CouponApplicationServiceIntegrationTest {
     private UserApplicationService userApplicationService;
 
     @Autowired
+    private OutboxEventJpaRepository outboxEventJpaRepository;
+
+    @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
     private static final ZonedDateTime FUTURE = ZonedDateTime.now().plusDays(30);
@@ -52,6 +57,101 @@ class CouponApplicationServiceIntegrationTest {
 
     private CouponTemplateInfo createTemplate(String name, CouponType type, Long value, Long minOrderAmount) {
         return couponApplicationService.createTemplate(name, type, value, minOrderAmount, FUTURE);
+    }
+
+    // ─────────────────────────────────────────────
+    // requestIssueCoupon — 선착순 쿠폰 발급 요청 (비동기)
+    // ─────────────────────────────────────────────
+
+    @DisplayName("선착순 쿠폰 발급 요청")
+    @Nested
+    class RequestIssueCoupon {
+
+        @DisplayName("[ECP] 정상 요청 시 PENDING 상태의 발급 요청이 생성되고 outbox에 이벤트가 저장된다.")
+        @Test
+        void returnsPendingRequest_andSavesOutboxEvent_whenRequestIsValid() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("선착순 쿠폰", CouponType.FIXED, 3000L, null);
+
+            // act
+            CouponIssueRequestInfo result = couponApplicationService.requestIssueCoupon(user.id(), template.templateId());
+
+            // assert
+            assertAll(
+                    () -> assertNotNull(result.requestId()),
+                    () -> assertEquals(CouponIssueRequestStatus.PENDING, result.status()),
+                    () -> assertFalse(outboxEventJpaRepository.findAll().isEmpty())
+            );
+        }
+
+        @DisplayName("[Uniqueness] 동일 유저가 동일 템플릿으로 중복 요청 시 CONFLICT 예외가 발생한다.")
+        @Test
+        void throwsConflictException_whenDuplicateRequest() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("선착순 쿠폰", CouponType.FIXED, 3000L, null);
+            couponApplicationService.requestIssueCoupon(user.id(), template.templateId());
+
+            // act & assert
+            CoreException ex = assertThrows(CoreException.class,
+                    () -> couponApplicationService.requestIssueCoupon(user.id(), template.templateId()));
+            assertEquals(ErrorType.CONFLICT, ex.getErrorType());
+        }
+
+        @DisplayName("[ECP] 존재하지 않는 templateId로 요청 시 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFoundException_whenTemplateNotFound() {
+            // arrange
+            UserInfo user = createUser("user1");
+
+            // act & assert
+            CoreException ex = assertThrows(CoreException.class,
+                    () -> couponApplicationService.requestIssueCoupon(user.id(), "999"));
+            assertEquals(ErrorType.NOT_FOUND, ex.getErrorType());
+        }
+
+        @DisplayName("[State Transition] 만료된 템플릿으로 요청 시 BAD_REQUEST 예외가 발생한다.")
+        @Test
+        void throwsBadRequestException_whenTemplateIsExpired() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("선착순 쿠폰", CouponType.FIXED, 3000L, null);
+            couponApplicationService.updateTemplate(template.templateId(), template.name(), null,
+                    ZonedDateTime.now().minusSeconds(1));
+
+            // act & assert
+            CoreException ex = assertThrows(CoreException.class,
+                    () -> couponApplicationService.requestIssueCoupon(user.id(), template.templateId()));
+            assertEquals(ErrorType.BAD_REQUEST, ex.getErrorType());
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // getIssueRequestStatus — 발급 요청 상태 조회
+    // ─────────────────────────────────────────────
+
+    @DisplayName("발급 요청 상태 조회")
+    @Nested
+    class GetIssueRequestStatus {
+
+        @DisplayName("[ECP] requestId로 조회 시 PENDING 상태의 발급 요청 정보를 반환한다.")
+        @Test
+        void returnsPendingStatus_whenRequestIsFound() {
+            // arrange
+            UserInfo user = createUser("user1");
+            CouponTemplateInfo template = createTemplate("선착순 쿠폰", CouponType.FIXED, 3000L, null);
+            CouponIssueRequestInfo request = couponApplicationService.requestIssueCoupon(user.id(), template.templateId());
+
+            // act
+            CouponIssueRequestInfo result = couponApplicationService.getIssueRequestStatus(request.requestId());
+
+            // assert
+            assertAll(
+                    () -> assertEquals(request.requestId(), result.requestId()),
+                    () -> assertEquals(CouponIssueRequestStatus.PENDING, result.status())
+            );
+        }
     }
 
     // ─────────────────────────────────────────────

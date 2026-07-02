@@ -126,7 +126,7 @@ public class CouponTemplateEntityTest {
         @Test
         void returnsTrue_whenExpiredAtIsInPast() {
             // arrange
-            CouponTemplateEntity template = CouponTemplateEntity.of("1", VALID_NAME, VALID_TYPE, VALID_VALUE, null, PAST, null, null, null);
+            CouponTemplateEntity template = CouponTemplateEntity.of("1", VALID_NAME, VALID_TYPE, VALID_VALUE, null, PAST, null, null, null, null, null);
 
             // act & assert
             assertTrue(template.isExpired());
@@ -209,6 +209,43 @@ public class CouponTemplateEntityTest {
 
             // assert
             assertEquals(2000L, discount);
+        }
+    }
+
+    @DisplayName("수량 제한 확인")
+    @Nested
+    class IsAtCapacity {
+
+        @DisplayName("maxIssueCount가 null이면 false를 반환한다 (무제한).")
+        @Test
+        void returnsFalse_whenMaxIssueCountIsNull() {
+            // arrange
+            CouponTemplateEntity template = new CouponTemplateEntity(VALID_NAME, VALID_TYPE, VALID_VALUE, null, FUTURE);
+
+            // act & assert
+            assertFalse(template.isAtCapacity());
+        }
+
+        @DisplayName("issuedCount가 maxIssueCount 미만이면 false를 반환한다.")
+        @Test
+        void returnsFalse_whenIssuedCountIsLessThanMax() {
+            // arrange
+            CouponTemplateEntity template = CouponTemplateEntity.of(
+                    "1", VALID_NAME, VALID_TYPE, VALID_VALUE, null, FUTURE, 100L, 50L, null, null, null);
+
+            // act & assert
+            assertFalse(template.isAtCapacity());
+        }
+
+        @DisplayName("issuedCount가 maxIssueCount 이상이면 true를 반환한다.")
+        @Test
+        void returnsTrue_whenIssuedCountReachesMax() {
+            // arrange
+            CouponTemplateEntity template = CouponTemplateEntity.of(
+                    "1", VALID_NAME, VALID_TYPE, VALID_VALUE, null, FUTURE, 100L, 100L, null, null, null);
+
+            // act & assert
+            assertTrue(template.isAtCapacity());
         }
     }
 
