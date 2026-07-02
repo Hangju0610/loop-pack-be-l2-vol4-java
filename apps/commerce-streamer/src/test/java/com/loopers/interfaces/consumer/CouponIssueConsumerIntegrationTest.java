@@ -164,6 +164,52 @@ class CouponIssueConsumerIntegrationTest {
         }
     }
 
+    @DisplayName("[T4] 선착순 100개 쿠폰에 150명이 요청 시 정확히 100명 성공, 50명 실패한다.")
+    @Nested
+    class FirstComeFirstServed {
+
+        @Test
+        void issues100Coupons_andFails50_whenRequested_by150Users() throws Exception {
+            // arrange
+            String templateId = insertCouponTemplate(100L, 0L);
+            for (int i = 0; i < 150; i++) {
+                String userId = "USR_CONC_" + String.format("%03d", i);
+                String requestId = insertCouponIssueRequest(userId, templateId, "PENDING");
+                String payload = buildPayload(
+                        EntityId.generate("OBX"), "CouponIssueRequestedEvent",
+                        Map.of("requestId", requestId, "userId", userId, "couponTemplateId", templateId)
+                );
+                kafkaTemplate.send(TOPIC, templateId, payload);
+            }
+
+            // act & assert
+            await().atMost(30, SECONDS).untilAsserted(() -> {
+                Integer processedCount = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM coupon_issue_requests WHERE ref_coupon_template_id = ? AND status != 'PENDING'",
+                        Integer.class, templateId);
+                assertEquals(150, processedCount, "150명 모두 처리되어야 한다");
+            });
+
+            Integer couponCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM coupons WHERE ref_coupon_template_id = ?",
+                    Integer.class, templateId);
+            Long issuedCount = jdbcTemplate.queryForObject(
+                    "SELECT issued_count FROM coupon_templates WHERE id = ?",
+                    Long.class, templateId);
+            Integer successCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM coupon_issue_requests WHERE ref_coupon_template_id = ? AND status = 'SUCCESS'",
+                    Integer.class, templateId);
+            Integer failedCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM coupon_issue_requests WHERE ref_coupon_template_id = ? AND status = 'FAILED'",
+                    Integer.class, templateId);
+
+            assertEquals(100, couponCount, "쿠폰은 정확히 100개 발급되어야 한다");
+            assertEquals(100L, issuedCount, "issuedCount는 100이어야 한다");
+            assertEquals(100, successCount, "100명은 성공해야 한다");
+            assertEquals(50, failedCount, "50명은 실패해야 한다");
+        }
+    }
+
     private String insertCouponTemplate(Long maxIssueCount, Long issuedCount) {
         String id = EntityId.generate("CTP");
         jdbcTemplate.update("""
