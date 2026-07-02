@@ -26,4 +26,20 @@ public class KafkaTopicConfig {
                 .replicas(EVENT_TOPIC_REPLICAS)
                 .build();
     }
+
+    @Bean
+    public NewTopic couponIssueRequestsTopic() {
+        return TopicBuilder.name("coupon-issue-requests")
+                .partitions(EVENT_TOPIC_PARTITIONS)
+                .replicas(EVENT_TOPIC_REPLICAS)
+                .build();
+    }
+
+    @Bean
+    public NewTopic couponIssueRequestsDltTopic() {
+        return TopicBuilder.name("coupon-issue-requests.DLT")
+                .partitions(EVENT_TOPIC_PARTITIONS)
+                .replicas(EVENT_TOPIC_REPLICAS)
+                .build();
+    }
 }
