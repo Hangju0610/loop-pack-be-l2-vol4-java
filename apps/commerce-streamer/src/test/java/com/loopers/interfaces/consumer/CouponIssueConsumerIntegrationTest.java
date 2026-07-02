@@ -128,7 +128,7 @@ class CouponIssueConsumerIntegrationTest {
         }
     }
 
-    @DisplayName("[T3] 수량 초과 시 요청 FAILED 처리 후 DLT로 전송된다.")
+    @DisplayName("[T3] 수량 초과 시 요청 FAILED 처리 후 정상 종료된다 (비즈니스 실패, DLT 미전송).")
     @Nested
     class CapacityExceeded {
 
