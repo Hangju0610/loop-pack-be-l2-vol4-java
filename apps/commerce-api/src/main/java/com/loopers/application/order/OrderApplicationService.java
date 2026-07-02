@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -93,28 +94,21 @@ public class OrderApplicationService {
         return order.finalAmount();
     }
 
-    /** 결제 성공 보상: 주문 PAID 전이 + 쿠폰 확정. (AFTER_COMMIT 리스너가 새 트랜잭션에서 호출) */
+    /** 결제 성공 Step 1: 주문 PAID 전이만 커밋. 쿠폰 확정은 별도 TX에서 처리한다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void completePaidOrder(String orderId) {
         OrderEntity order = findOrderOrThrow(orderId);
         order.pay();
         orderRepository.save(order);
-        String couponId = order.getSnapshot().couponId();
-        if (couponId != null) {
-            couponApplicationService.confirmCoupon(couponId);
-        }
     }
 
-    /** 결제 실패 보상: 주문 CANCELLED 전이 + 쿠폰 해제 + 재고 복원. (all-or-nothing, 새 트랜잭션) */
+    /** 결제 실패 보상: 주문 CANCELLED 전이 + 재고 복원. (all-or-nothing, 새 트랜잭션)
+     *  쿠폰 해제는 리스너가 별도 TX로 처리한다. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void compensateFailedOrder(String orderId) {
         OrderEntity order = findOrderOrThrow(orderId);
         order.cancel();
         orderRepository.save(order);
-        String couponId = order.getSnapshot().couponId();
-        if (couponId != null) {
-            couponApplicationService.releaseCoupon(couponId);
-        }
 
         // 재고 복원도 차감(createOrder)과 동일하게 비관적 락으로 lost update를 방지한다.
         Map<String, Integer> restoreQuantities = order.getSnapshot().items().stream()
@@ -128,6 +122,12 @@ public class OrderApplicationService {
             inventory.restore(restoreQuantities.get(inventory.getProductId()));
             inventoryRepository.save(inventory);
         });
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<String> findCouponIdByOrder(String orderId) {
+        return orderRepository.findById(orderId)
+                .map(order -> order.getSnapshot().couponId());
     }
 
     @Transactional(readOnly = true)
