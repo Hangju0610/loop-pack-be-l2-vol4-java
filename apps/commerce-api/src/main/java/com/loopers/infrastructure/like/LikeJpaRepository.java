@@ -19,6 +19,8 @@ public interface LikeJpaRepository extends JpaRepository<LikeJpaEntity, String> 
 
     Page<LikeJpaEntity> findAllByUserIdAndDeletedAtIsNull(String userId, Pageable pageable);
 
+    long countByProductIdAndDeletedAtIsNull(String productId);
+
     @Modifying
     @Query("UPDATE LikeJpaEntity l SET l.deletedAt = :now WHERE l.productId = :productId AND l.deletedAt IS NULL")
     void softDeleteAllByProductId(@Param("productId") String productId, @Param("now") ZonedDateTime now);

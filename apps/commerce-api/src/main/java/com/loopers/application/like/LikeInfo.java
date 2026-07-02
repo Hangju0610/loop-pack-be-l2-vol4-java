@@ -11,14 +11,14 @@ public record LikeInfo(
     Long price,
     Long likeCount
 ) {
-    public static LikeInfo from(ProductEntity product, BrandEntity brand) {
+    public static LikeInfo from(ProductEntity product, BrandEntity brand, long likeCount) {
         return new LikeInfo(
             product.getId(),
             product.getBrandId(),
             brand.getName(),
             product.getName(),
             product.getPrice(),
-            0L
+            likeCount
         );
     }
 }

@@ -11,6 +11,7 @@ public interface LikeRepository {
     Optional<LikeEntity> findActive(String userId, String productId);
     Optional<LikeEntity> findAny(String userId, String productId);
     Page<LikeEntity> findActiveByUserId(String userId, Pageable pageable);
+    long countActiveByProductId(String productId);
     void deleteAllByProductId(String productId);
     void deleteAllByProductIds(List<String> productIds);
 }

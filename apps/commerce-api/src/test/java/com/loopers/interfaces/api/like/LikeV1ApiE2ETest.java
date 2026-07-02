@@ -217,8 +217,7 @@ class LikeV1ApiE2ETest {
             assertThat(item.name()).isEqualTo("에어맥스");
             assertThat(item.brandName()).isEqualTo("나이키");
             assertThat(item.price()).isEqualTo(100_000L);
-            // likeCount는 commerce-streamer의 product_metrics가 업데이트하므로 API 단위에서는 0
-            assertThat(item.likeCount()).isEqualTo(0L);
+            assertThat(item.likeCount()).isEqualTo(1L);
         }
 
         @DisplayName("타인의 좋아요 목록을 조회하면 403을 반환한다.")

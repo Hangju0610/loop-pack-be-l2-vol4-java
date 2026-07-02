@@ -72,7 +72,8 @@ public class LikeApplicationService {
                     .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "[id = " + like.getProductId() + "] 상품을 찾을 수 없습니다."));
             BrandEntity brand = brandRepository.findById(product.getBrandId())
                     .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "브랜드를 찾을 수 없습니다."));
-            return LikeInfo.from(product, brand);
+            long likeCount = likeRepository.countActiveByProductId(like.getProductId());
+            return LikeInfo.from(product, brand, likeCount);
         });
     }
 }
