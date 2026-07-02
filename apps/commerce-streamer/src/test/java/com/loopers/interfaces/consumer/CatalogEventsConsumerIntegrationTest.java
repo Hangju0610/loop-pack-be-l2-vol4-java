@@ -3,8 +3,6 @@ package com.loopers.interfaces.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.domain.metrics.ProductMetricsRepository;
 import com.loopers.infrastructure.EntityId;
-import com.loopers.testconfig.KafkaTopicsTestConfig;
-import com.loopers.testcontainers.KafkaTestContainersConfig;
 import com.loopers.testcontainers.MySqlTestContainersConfig;
 import com.loopers.testcontainers.RedisTestContainersConfig;
 import com.loopers.utils.DatabaseCleanUp;
@@ -15,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.test.context.EmbeddedKafka;
 
 import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
@@ -24,12 +23,15 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.kafka.consumer.auto-offset-reset=earliest")
+@EmbeddedKafka(
+        partitions = 1,
+        topics = {"catalog-events", "order-events", "demo.internal.topic-v1"},
+        bootstrapServersProperty = "spring.kafka.bootstrap-servers"
+)
 @Import({
         MySqlTestContainersConfig.class,
-        RedisTestContainersConfig.class,
-        KafkaTestContainersConfig.class,
-        KafkaTopicsTestConfig.class
+        RedisTestContainersConfig.class
 })
 @DisplayName("CatalogEventsConsumer 통합 테스트")
 class CatalogEventsConsumerIntegrationTest {

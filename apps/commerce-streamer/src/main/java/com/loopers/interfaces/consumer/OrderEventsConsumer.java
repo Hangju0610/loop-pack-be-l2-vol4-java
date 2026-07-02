@@ -24,15 +24,13 @@ import java.util.List;
 public class OrderEventsConsumer {
 
     private static final String CONSUMER_GROUP = "order-metrics-consumer";
-    private static final String ORDER_EVENTS_TOPIC = "order-events";
-
     private final ProductMetricsRepository productMetricsRepository;
     private final EventHandledRepository eventHandledRepository;
     private final OrderSnapshotRepository orderSnapshotRepository;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(
-            topics = {ORDER_EVENTS_TOPIC},
+            topics = "${commerce-streamer.kafka.topics.order-events:order-events}",
             groupId = CONSUMER_GROUP,
             containerFactory = KafkaConfig.BATCH_LISTENER
     )
