@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest(properties = "spring.kafka.consumer.auto-offset-reset=earliest")
 @EmbeddedKafka(
-        partitions = 1,
+        partitions = 3,
         topics = {"catalog-events", "order-events", "demo.internal.topic-v1"},
         bootstrapServersProperty = "spring.kafka.bootstrap-servers"
 )
