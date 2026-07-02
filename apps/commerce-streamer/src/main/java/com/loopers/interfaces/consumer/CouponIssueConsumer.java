@@ -67,13 +67,11 @@ public class CouponIssueConsumer {
             return;
         }
 
-        // at-least-once 멱등성: 이미 쿠폰이 존재하면 SUCCESS 처리
         if (couponJpaRepository.existsByUserIdAndCouponTemplateId(userId, templateId)) {
             updateRequestStatus(requestId, CouponIssueRequestStatus.SUCCESS, null);
             return;
         }
 
-        // 수량 초과 확인 (pessimistic lock으로 동시성 제어)
         CouponTemplateJpaEntity template = couponTemplateJpaRepository.findByIdWithLock(templateId)
                 .orElseThrow(() -> new IllegalStateException("쿠폰 템플릿을 찾을 수 없습니다: " + templateId));
 
@@ -83,10 +81,8 @@ public class CouponIssueConsumer {
             return;
         }
 
-        // 쿠폰 발급
         couponJpaRepository.save(new CouponJpaEntity(userId, templateId));
         template.incrementIssuedCount();
-        couponTemplateJpaRepository.save(template);
         updateRequestStatus(requestId, CouponIssueRequestStatus.SUCCESS, null);
     }
 
