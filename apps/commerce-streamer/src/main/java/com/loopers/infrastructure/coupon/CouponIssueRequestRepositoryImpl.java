@@ -18,7 +18,7 @@ public class CouponIssueRequestRepositoryImpl implements CouponIssueRequestRepos
         return jpaRepository.findById(id)
                 .map(e -> CouponIssueRequestEntity.reconstruct(
                         e.getId(),
-                        com.loopers.domain.coupon.CouponIssueRequestStatus.valueOf(e.getStatus().name()),
+                        e.getStatus(),
                         e.getFailReason()
                 ));
     }
@@ -26,10 +26,7 @@ public class CouponIssueRequestRepositoryImpl implements CouponIssueRequestRepos
     @Override
     public void save(CouponIssueRequestEntity entity) {
         jpaRepository.findById(entity.getId()).ifPresent(jpaEntity -> {
-            jpaEntity.updateStatus(
-                    CouponIssueRequestStatus.valueOf(entity.getStatus().name()),
-                    entity.getFailReason()
-            );
+            jpaEntity.updateStatus(entity.getStatus(), entity.getFailReason());
             jpaRepository.save(jpaEntity);
         });
     }

@@ -1,4 +1,4 @@
-package com.loopers.infrastructure.coupon;
+package com.loopers.domain.coupon;
 
 public enum CouponType {
     FIXED, RATE

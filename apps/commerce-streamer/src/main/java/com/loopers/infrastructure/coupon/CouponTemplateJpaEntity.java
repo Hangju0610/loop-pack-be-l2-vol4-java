@@ -1,5 +1,6 @@
 package com.loopers.infrastructure.coupon;
 
+import com.loopers.domain.coupon.CouponType;
 import com.loopers.infrastructure.BaseJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
