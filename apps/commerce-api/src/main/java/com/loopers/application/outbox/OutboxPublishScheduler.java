@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -22,7 +21,6 @@ public class OutboxPublishScheduler {
     private final KafkaTemplate<Object, Object> kafkaTemplate;
 
     @Scheduled(fixedDelay = 1000)
-    @Transactional
     public void publishPendingEvents() {
         List<OutboxEvent> pending = outboxEventRepository.findPending(BATCH_SIZE);
         for (OutboxEvent event : pending) {

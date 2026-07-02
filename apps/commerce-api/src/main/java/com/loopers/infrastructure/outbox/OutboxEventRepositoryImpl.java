@@ -36,6 +36,7 @@ public class OutboxEventRepositoryImpl implements OutboxEventRepository {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<OutboxEvent> findPending(int limit) {
         return jpaRepository.findByStatusOrderByCreatedAtAsc(OutboxStatus.PENDING, PageRequest.of(0, limit))
                 .stream()
@@ -44,6 +45,7 @@ public class OutboxEventRepositoryImpl implements OutboxEventRepository {
     }
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void update(OutboxEvent event) {
         jpaRepository.findById(event.getId()).ifPresent(entity -> {
             entity.updateStatus(event.getStatus(), event.getRetryCount(), event.getPublishedAt());
