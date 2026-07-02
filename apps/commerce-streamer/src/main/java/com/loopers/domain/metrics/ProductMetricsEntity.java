@@ -30,7 +30,12 @@ public class ProductMetricsEntity {
     public void incrementViewCount() { this.viewCount++; }
     public void incrementLikeCount() { this.likeCount++; }
     public void decrementLikeCount() { if (this.likeCount > 0) this.likeCount--; }
-    public void incrementPurchaseCount() { this.purchaseCount++; }
+    public void incrementPurchaseCount(long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        this.purchaseCount += amount;
+    }
 
     public String getProductId() { return productId; }
     public long getViewCount() { return viewCount; }

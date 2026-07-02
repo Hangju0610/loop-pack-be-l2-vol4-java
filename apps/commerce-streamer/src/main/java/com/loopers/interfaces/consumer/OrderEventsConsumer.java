@@ -5,6 +5,9 @@ import com.loopers.confg.kafka.KafkaConfig;
 import com.loopers.domain.handled.EventHandledRepository;
 import com.loopers.domain.metrics.ProductMetricsEntity;
 import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.order.OrderSnapshot;
+import com.loopers.domain.order.OrderSnapshotItem;
+import com.loopers.domain.order.OrderSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -25,6 +28,7 @@ public class OrderEventsConsumer {
 
     private final ProductMetricsRepository productMetricsRepository;
     private final EventHandledRepository eventHandledRepository;
+    private final OrderSnapshotRepository orderSnapshotRepository;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(
@@ -63,11 +67,19 @@ public class OrderEventsConsumer {
             return;
         }
 
-        // purchase_count 는 orderId 단위 집계 불가 → 더미 product 키를 order 단위로 관리
-        // 실제 상품별 집계는 OrderCreatedEvent의 items 리스트 파싱이 필요하므로 현재는 orderId 기반
-        ProductMetricsEntity metrics = productMetricsRepository.findByProductId(orderId)
-                .orElseGet(() -> ProductMetricsEntity.create(orderId));
-        metrics.incrementPurchaseCount();
-        productMetricsRepository.save(metrics);
+        OrderSnapshot snapshot = orderSnapshotRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new IllegalStateException("주문 snapshot을 찾을 수 없습니다. orderId=" + orderId));
+
+        for (OrderSnapshotItem item : snapshot.items()) {
+            if (item.productId() == null || item.quantity() == null) {
+                log.warn("상품 정보가 없는 주문 snapshot item 무시 [eventId={}, orderId={}]", payload.eventId(), orderId);
+                continue;
+            }
+
+            ProductMetricsEntity metrics = productMetricsRepository.findByProductId(item.productId())
+                    .orElseGet(() -> ProductMetricsEntity.create(item.productId()));
+            metrics.incrementPurchaseCount(item.quantity());
+            productMetricsRepository.save(metrics);
+        }
     }
 }
