@@ -32,6 +32,12 @@ public class CouponTemplateJpaEntity extends BaseJpaEntity {
     @Column(name = "expired_at", nullable = false)
     private ZonedDateTime expiredAt;
 
+    @Column(name = "max_issue_count")
+    private Long maxIssueCount;
+
+    @Column(name = "issued_count", nullable = false)
+    private Long issuedCount;
+
     protected CouponTemplateJpaEntity() {}
 
     @Override
@@ -40,12 +46,14 @@ public class CouponTemplateJpaEntity extends BaseJpaEntity {
     }
 
     CouponTemplateJpaEntity(String id, String name, CouponType type, Long value, Long minOrderAmount,
-            ZonedDateTime expiredAt, ZonedDateTime deletedAt) {
+            ZonedDateTime expiredAt, Long maxIssueCount, Long issuedCount, ZonedDateTime deletedAt) {
         super(id, deletedAt);
         this.name = name;
         this.type = type;
         this.value = value;
         this.minOrderAmount = minOrderAmount;
         this.expiredAt = expiredAt;
+        this.maxIssueCount = maxIssueCount;
+        this.issuedCount = issuedCount;
     }
 }

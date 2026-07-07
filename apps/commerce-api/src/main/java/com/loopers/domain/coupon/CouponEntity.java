@@ -48,11 +48,37 @@ public class CouponEntity extends BaseEntity {
         return status;
     }
 
-    public void use() {
+    public void reserve() {
         if (status != CouponStatus.AVAILABLE) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "사용 가능한 쿠폰이 아닙니다.");
+            throw new CoreException(ErrorType.BAD_REQUEST, "예약 가능한 쿠폰이 아닙니다.");
+        }
+        this.status = CouponStatus.RESERVED;
+    }
+
+    public void confirm() {
+        if (status != CouponStatus.RESERVED) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "예약된 쿠폰이 아닙니다.");
         }
         this.status = CouponStatus.USED;
+    }
+
+    public void release() {
+        if (status != CouponStatus.RESERVED) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "예약된 쿠폰이 아닙니다.");
+        }
+        this.status = CouponStatus.AVAILABLE;
+    }
+
+    public void validateOwnedBy(String userId) {
+        if (!isOwnedBy(userId)) {
+            throw new CoreException(ErrorType.FORBIDDEN, "본인의 쿠폰만 사용할 수 있습니다.");
+        }
+    }
+
+    public void validateNotExpired(ZonedDateTime expiredAt) {
+        if (ZonedDateTime.now().isAfter(expiredAt)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "만료된 쿠폰입니다.");
+        }
     }
 
     public CouponStatus resolveStatus(ZonedDateTime expiredAt) {

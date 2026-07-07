@@ -12,6 +12,4 @@ public interface ProductRepository {
     Page<ProductEntity> findAll(String brandId, Pageable pageable);
     List<String> findIdsByBrandId(String brandId);
     List<ProductEntity> findAllByIds(List<String> ids);
-    void incrementLikeCount(String id);
-    void decrementLikeCount(String id);
 }

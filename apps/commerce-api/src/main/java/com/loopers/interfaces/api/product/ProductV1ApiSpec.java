@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.product;
 
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResult;
+import com.loopers.interfaces.auth.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -40,6 +41,7 @@ public interface ProductV1ApiSpec {
                     content = @Content(schema = @Schema(hidden = true)))
     })
     ApiResponse<ProductV1Dto.PdpResponse> getProduct(
-            @Parameter(description = "상품 ID", required = true) String productId
+            @Parameter(description = "상품 ID", required = true) String productId,
+            @Parameter(hidden = true) @LoginUser String userId
     );
 }

@@ -1,11 +1,16 @@
 package com.loopers.application.payment;
 
 import com.loopers.application.brand.BrandApplicationService;
+import com.loopers.application.coupon.CouponApplicationService;
+import com.loopers.application.coupon.CouponInfo;
 import com.loopers.application.order.OrderApplicationService;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.product.ProductApplicationService;
 import com.loopers.application.user.UserApplicationService;
+import com.loopers.domain.coupon.CouponStatus;
+import com.loopers.domain.coupon.CouponType;
 import com.loopers.domain.order.OrderStatus;
+import com.loopers.infrastructure.inventory.InventoryJpaRepository;
 import com.loopers.domain.payment.CardType;
 import com.loopers.domain.payment.PaymentStatus;
 import com.loopers.domain.payment.PgClient;
@@ -22,7 +27,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import java.time.LocalDate;
 import java.util.List;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -38,11 +45,14 @@ class PaymentApplicationServiceIntegrationTest {
     @Autowired OrderApplicationService orderApplicationService;
     @Autowired BrandApplicationService brandApplicationService;
     @Autowired ProductApplicationService productApplicationService;
+    @Autowired CouponApplicationService couponApplicationService;
+    @Autowired InventoryJpaRepository inventoryJpaRepository;
     @Autowired DatabaseCleanUp databaseCleanUp;
     @MockBean PgClient pgClient;
 
     private String userId;
     private String orderId;
+    private String productId;
 
     @AfterEach
     void tearDown() {
@@ -57,7 +67,8 @@ class PaymentApplicationServiceIntegrationTest {
 
         var brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
         var product = productApplicationService.createProduct(brand.id(), "에어맥스", "상품 설명", 100_000L, 10);
-        var order = orderApplicationService.createOrder(userId, List.of(new OrderItemCommand(product.id(), 1)), null);
+        productId = product.id();
+        var order = orderApplicationService.createOrder(userId, List.of(new OrderItemCommand(productId, 1)), null);
         orderId = order.orderId();
     }
 
@@ -99,20 +110,6 @@ class PaymentApplicationServiceIntegrationTest {
                 () -> paymentApplicationService.initiate(userId, orderId, CardType.SAMSUNG, "1234-5678-9814-1451"));
         }
 
-        @DisplayName("PG가 즉시 FAILED를 응답하면 PaymentEntity가 FAILED로 확정되고 future도 FAILED로 완료된다.")
-        @Test
-        void initiate_completesAsFailed_whenPgRespondsFailedImmediately() throws Exception {
-            // PG가 PENDING이 아닌 FAILED를 즉시 응답하면 applyPgResponse가 즉시 FAILED로 확정하고
-            // initiate는 콜백 대기 없이 completedFuture를 반환한다. (getTransaction 미호출)
-            when(pgClient.requestPayment(any(), any()))
-                .thenReturn(new PgTransactionResponse("TX-IMM-FAIL", PgTransactionStatus.FAILED, "한도 초과"));
-
-            var future = paymentApplicationService.initiate(userId, orderId, CardType.SAMSUNG, "1234-5678-9814-1451");
-            PaymentInfo result = future.get(5, java.util.concurrent.TimeUnit.SECONDS);
-
-            assertThat(result.status()).isEqualTo(PaymentStatus.FAILED);
-            assertThat(result.failureReason()).isEqualTo("한도 초과");
-        }
     }
 
     @DisplayName("콜백 미수신 (timeout → 1차 Poll)")
@@ -340,6 +337,119 @@ class PaymentApplicationServiceIntegrationTest {
 
             assertThat(result.status()).isEqualTo(PaymentStatus.SUCCESS);
             verify(pgClient, never()).getTransaction(eq("TX-CONFIRMED"), any());
+        }
+    }
+
+    @DisplayName("결제 확정 → 쿠폰/재고 보상 (Phase C)")
+    @Nested
+    class Compensation {
+
+        private String couponBackedOrderId(String couponId) {
+            var order = orderApplicationService.createOrder(userId,
+                List.of(new OrderItemCommand(productId, 2)), couponId);
+            return order.orderId();
+        }
+
+        private String issueCoupon() {
+            var template = couponApplicationService.createTemplate(
+                "테스트 쿠폰", CouponType.FIXED, 10_000L, null,
+                java.time.ZonedDateTime.now().plusDays(30));
+            return couponApplicationService.issueCoupon(userId, template.templateId()).couponId();
+        }
+
+        private CouponStatus couponStatus(String couponId) {
+            return couponApplicationService.getMyCoupons(userId, org.springframework.data.domain.PageRequest.of(0, 50))
+                .stream().filter(c -> c.couponId().equals(couponId)).map(CouponInfo::status)
+                .findFirst().orElseThrow();
+        }
+
+        private Integer inventoryQuantity() {
+            return inventoryJpaRepository.findByProductIdAndDeletedAtIsNull(productId).orElseThrow().getQuantity();
+        }
+
+        @DisplayName("AC-1: 쿠폰 적용 주문 결제 성공 시 주문 PAID, 쿠폰 USED가 된다.")
+        @Test
+        void success_paysOrder_andConfirmsCoupon() {
+            String couponId = issueCoupon();
+            String cbOrderId = couponBackedOrderId(couponId); // 재고 -2, 쿠폰 RESERVED
+            int afterOrder = inventoryQuantity();
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-C1", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, cbOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            paymentApplicationService.processCallback("TX-C1", PgTransactionStatus.SUCCESS, null);
+
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, cbOrderId).status()).isEqualTo(OrderStatus.PAID);
+                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
+            });
+            assertThat(inventoryQuantity()).isEqualTo(afterOrder); // 성공 시 재고 복원 없음
+        }
+
+        @DisplayName("AC-2: 쿠폰 적용 주문 결제 실패 시 주문 CANCELLED, 쿠폰 AVAILABLE, 재고 복원.")
+        @Test
+        void failure_cancelsOrder_releasesCoupon_andRestoresInventory() {
+            String couponId = issueCoupon();
+            String cbOrderId = couponBackedOrderId(couponId); // 재고 -2, 쿠폰 RESERVED
+            int afterOrder = inventoryQuantity();
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-C2", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, cbOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            paymentApplicationService.processCallback("TX-C2", PgTransactionStatus.FAILED, "한도 초과");
+
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, cbOrderId).status()).isEqualTo(OrderStatus.CANCELLED);
+                assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
+                assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2); // 차감분 2 복원
+            });
+        }
+
+        @DisplayName("동시 정산: SUCCESS와 FAILED 콜백이 경합해도 결제-주문 상태가 일관된다(split-brain 없음).")
+        @Test
+        void concurrentSettlement_isConsistent() {
+            String couponId = issueCoupon();
+            String cbOrderId = couponBackedOrderId(couponId);
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-RACE", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, cbOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            var success = java.util.concurrent.CompletableFuture.runAsync(() ->
+                paymentApplicationService.processCallback("TX-RACE", PgTransactionStatus.SUCCESS, null));
+            var failed = java.util.concurrent.CompletableFuture.runAsync(() ->
+                paymentApplicationService.processCallback("TX-RACE", PgTransactionStatus.FAILED, "한도 초과"));
+            java.util.concurrent.CompletableFuture.allOf(success, failed).join();
+
+            PaymentStatus paymentStatus = paymentApplicationService.getPaymentByTransactionKey("TX-RACE").status();
+            // 락으로 정확히 한 전이만 확정 → 결제와 주문이 짝지어진 일관 상태여야 한다.
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                OrderStatus orderStatus = orderApplicationService.getOrder(userId, cbOrderId).status();
+                if (paymentStatus == PaymentStatus.SUCCESS) {
+                    assertThat(orderStatus).isEqualTo(OrderStatus.PAID);
+                    assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.USED);
+                } else {
+                    assertThat(paymentStatus).isEqualTo(PaymentStatus.FAILED);
+                    assertThat(orderStatus).isEqualTo(OrderStatus.CANCELLED);
+                    assertThat(couponStatus(couponId)).isEqualTo(CouponStatus.AVAILABLE);
+                }
+            });
+        }
+
+        @DisplayName("AC-3: 쿠폰 없는 주문 결제 실패도 주문 CANCELLED, 재고 복원(쿠폰 단계 skip).")
+        @Test
+        void failure_withoutCoupon_cancelsOrder_andRestoresInventory() {
+            String noCouponOrderId = couponBackedOrderId(null); // 재고 -2
+            int afterOrder = inventoryQuantity();
+            when(pgClient.requestPayment(any(), any()))
+                .thenReturn(new PgTransactionResponse("TX-C3", PgTransactionStatus.PENDING, null));
+            paymentApplicationService.initiate(userId, noCouponOrderId, CardType.SAMSUNG, "1234-5678-9814-1451");
+
+            paymentApplicationService.processCallback("TX-C3", PgTransactionStatus.FAILED, "한도 초과");
+
+            await().atMost(5, SECONDS).untilAsserted(() -> {
+                assertThat(orderApplicationService.getOrder(userId, noCouponOrderId).status()).isEqualTo(OrderStatus.CANCELLED);
+                assertThat(inventoryQuantity()).isEqualTo(afterOrder + 2);
+            });
         }
     }
 

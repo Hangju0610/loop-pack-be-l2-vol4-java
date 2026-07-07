@@ -19,8 +19,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
@@ -35,6 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(OutputCaptureExtension.class)
 @SpringBootTest
 class OrderApplicationServiceIntegrationTest {
 
@@ -112,6 +116,27 @@ class OrderApplicationServiceIntegrationTest {
             );
         }
 
+        @DisplayName("[Event] 주문 생성 성공 시 유저 활동 로그가 기록된다.")
+        @Test
+        void logsUserActivity_whenOrderIsCreated(CapturedOutput output) {
+            // arrange
+            UserInfo user = createUser("testuser1");
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 10);
+            List<OrderItemCommand> commands = List.of(new OrderItemCommand(product.id(), 2));
+
+            // act
+            OrderInfo result = orderApplicationService.createOrder(user.id(), commands, null);
+
+            // assert
+            assertThat(output)
+                    .contains("user_activity")
+                    .containsOnlyOnce("type=ORDER_CREATED")
+                    .contains("userId=" + user.id())
+                    .contains("targetType=ORDER")
+                    .contains("targetId=" + result.orderId());
+        }
+
         @DisplayName("[Error Guessing] 주문 생성 후 재고가 차감된다.")
         @Test
         void deductsInventory_afterOrderCreated() {
@@ -157,6 +182,61 @@ class OrderApplicationServiceIntegrationTest {
                     () -> orderApplicationService.createOrder(user.id(),
                             List.of(new OrderItemCommand(product.id(), 5)), null));
             assertEquals(ErrorType.BAD_REQUEST, exception.getErrorType());
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // prepareForPayment — 결제 준비용 주문 락/검증
+    // ─────────────────────────────────────────────
+
+    @DisplayName("결제 준비용 주문 검증")
+    @Nested
+    class PrepareForPayment {
+
+        @DisplayName("PENDING 주문이면 finalAmount를 반환한다.")
+        @Test
+        void returnsFinalAmount_whenOrderIsPending() {
+            // arrange
+            UserInfo user = createUser("testuser1");
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 10);
+            OrderInfo order = orderApplicationService.createOrder(user.id(),
+                    List.of(new OrderItemCommand(product.id(), 2)), null);
+
+            // act
+            Long amount = orderApplicationService.prepareForPayment(user.id(), order.orderId());
+
+            // assert
+            assertEquals(200_000L, amount);
+        }
+
+        @DisplayName("소유자가 아닌 유저가 요청하면 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFound_whenNotOwner() {
+            // arrange
+            UserInfo owner = createUser("owner1");
+            UserInfo other = createUser("other1");
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo product = createProduct(brand.id(), "에어맥스", 100_000L, 10);
+            OrderInfo order = orderApplicationService.createOrder(owner.id(),
+                    List.of(new OrderItemCommand(product.id(), 1)), null);
+
+            // act & assert
+            CoreException exception = assertThrows(CoreException.class,
+                    () -> orderApplicationService.prepareForPayment(other.id(), order.orderId()));
+            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+        }
+
+        @DisplayName("존재하지 않는 주문이면 NOT_FOUND 예외가 발생한다.")
+        @Test
+        void throwsNotFound_whenOrderNotExists() {
+            // arrange
+            UserInfo user = createUser("testuser1");
+
+            // act & assert
+            CoreException exception = assertThrows(CoreException.class,
+                    () -> orderApplicationService.prepareForPayment(user.id(), "ORD_UNKNOWN"));
+            assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
         }
     }
 

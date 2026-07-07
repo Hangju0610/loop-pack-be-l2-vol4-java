@@ -10,8 +10,11 @@ import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.*;
 import org.springframework.kafka.listener.ContainerProperties;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.converter.BatchMessagingMessageConverter;
 import org.springframework.kafka.support.converter.ByteArrayJsonMessageConverter;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -51,10 +54,22 @@ public class KafkaConfig {
         return new ByteArrayJsonMessageConverter(objectMapper);
     }
 
+    @Bean
+    public DeadLetterPublishingRecoverer deadLetterPublishingRecoverer(KafkaTemplate<Object, Object> kafkaTemplate) {
+        return new DeadLetterPublishingRecoverer(kafkaTemplate);
+    }
+
+    @Bean
+    public DefaultErrorHandler defaultErrorHandler(DeadLetterPublishingRecoverer recoverer) {
+        // 재시도 없이 즉시 DLT로 라우팅 (컨슈머 내부에서 멱등성·재시도 전략을 직접 관리)
+        return new DefaultErrorHandler(recoverer, new FixedBackOff(0L, 0L));
+    }
+
     @Bean(name = BATCH_LISTENER)
     public ConcurrentKafkaListenerContainerFactory<Object, Object> defaultBatchListenerContainerFactory(
             KafkaProperties kafkaProperties,
-            ByteArrayJsonMessageConverter converter
+            ByteArrayJsonMessageConverter converter,
+            DefaultErrorHandler errorHandler
     ) {
         Map<String, Object> consumerConfig = new HashMap<>(kafkaProperties.buildConsumerProperties());
         consumerConfig.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, MAX_POLLING_SIZE);
@@ -70,6 +85,7 @@ public class KafkaConfig {
         factory.setBatchMessageConverter(new BatchMessagingMessageConverter(converter));
         factory.setConcurrency(3);
         factory.setBatchListener(true);
+        factory.setCommonErrorHandler(errorHandler);
         return factory;
     }
 }

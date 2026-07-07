@@ -29,6 +29,11 @@ public class PaymentRepositoryImpl implements PaymentRepository {
     }
 
     @Override
+    public Optional<PaymentEntity> findByTransactionKeyWithLock(String transactionKey) {
+        return paymentJpaRepository.findByTransactionKeyWithLock(transactionKey).map(PaymentMapper::toDomain);
+    }
+
+    @Override
     public boolean existsByOrderIdAndStatusIn(String orderId, PaymentStatus... statuses) {
         return paymentJpaRepository.existsByOrderIdAndStatusIn(orderId, statuses);
     }

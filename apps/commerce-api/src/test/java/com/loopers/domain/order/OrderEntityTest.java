@@ -169,4 +169,44 @@ public class OrderEntityTest {
             assertThrows(CoreException.class, order::pay);
         }
     }
+
+    @DisplayName("주문 취소 처리")
+    @Nested
+    class Cancel {
+
+        @DisplayName("PENDING 상태에서 cancel()을 호출하면 CANCELLED가 된다.")
+        @Test
+        void cancel_changeStatusToCancelled_whenStatusIsPending() {
+            // arrange
+            OrderEntity order = new OrderEntity(VALID_USER_ID, validSnapshot("1"));
+
+            // act
+            order.cancel();
+
+            // assert
+            assertEquals(OrderStatus.CANCELLED, order.getStatus());
+        }
+
+        @DisplayName("PAID 상태에서 cancel()을 호출하면 예외가 발생한다.")
+        @Test
+        void cancel_throwsException_whenStatusIsPaid() {
+            // arrange
+            OrderEntity order = new OrderEntity(VALID_USER_ID, validSnapshot("1"));
+            order.pay();
+
+            // act & assert
+            assertThrows(CoreException.class, order::cancel);
+        }
+
+        @DisplayName("이미 CANCELLED 상태에서 cancel()을 호출하면 예외가 발생한다.")
+        @Test
+        void cancel_throwsException_whenStatusIsAlreadyCancelled() {
+            // arrange
+            OrderEntity order = new OrderEntity(VALID_USER_ID, validSnapshot("1"));
+            order.cancel();
+
+            // act & assert
+            assertThrows(CoreException.class, order::cancel);
+        }
+    }
 }

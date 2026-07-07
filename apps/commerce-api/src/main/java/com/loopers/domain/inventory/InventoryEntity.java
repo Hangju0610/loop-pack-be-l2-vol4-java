@@ -50,6 +50,15 @@ public class InventoryEntity extends BaseEntity {
         this.quantity = newQuantity;
     }
 
+    public void restore(Integer amount) {
+        validateRestoreAmount(amount);
+        try {
+            this.quantity = Math.addExact(this.quantity, amount);
+        } catch (ArithmeticException e) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "복원 후 재고가 허용 범위를 초과합니다.");
+        }
+    }
+
     private void validateProductId(String productId) {
         if (productId == null) {
             throw new CoreException(ErrorType.BAD_REQUEST, "상품 ID는 필수입니다.");
@@ -65,6 +74,12 @@ public class InventoryEntity extends BaseEntity {
     private void validateDeductAmount(Integer amount) {
         if (amount == null || amount <= 0) {
             throw new CoreException(ErrorType.BAD_REQUEST, "차감 수량은 1 이상이어야 합니다.");
+        }
+    }
+
+    private void validateRestoreAmount(Integer amount) {
+        if (amount == null || amount <= 0) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "복원 수량은 1 이상이어야 합니다.");
         }
     }
 }

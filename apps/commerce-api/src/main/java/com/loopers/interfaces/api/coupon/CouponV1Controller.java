@@ -15,13 +15,23 @@ public class CouponV1Controller {
     private final CouponApplicationService couponApplicationService;
 
     @PostMapping("/{couponTemplateId}/issue")
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CouponV1Dto.IssueCouponResponse> issueCoupon(
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<CouponV1Dto.IssueRequestResponse> requestIssueCoupon(
             @PathVariable String couponTemplateId,
             @LoginUser String userId
     ) {
-        return ApiResponse.success(CouponV1Dto.IssueCouponResponse.from(
-                couponApplicationService.issueCoupon(userId, couponTemplateId)
+        return ApiResponse.success(CouponV1Dto.IssueRequestResponse.from(
+                couponApplicationService.requestIssueCoupon(userId, couponTemplateId)
+        ));
+    }
+
+    @GetMapping("/requests/{requestId}")
+    public ApiResponse<CouponV1Dto.IssueRequestStatusResponse> getIssueRequestStatus(
+            @PathVariable String requestId,
+            @LoginUser String userId
+    ) {
+        return ApiResponse.success(CouponV1Dto.IssueRequestStatusResponse.from(
+                couponApplicationService.getIssueRequestStatus(requestId)
         ));
     }
 }

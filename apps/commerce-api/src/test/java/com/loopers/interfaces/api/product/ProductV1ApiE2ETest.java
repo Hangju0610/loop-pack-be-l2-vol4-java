@@ -6,6 +6,8 @@ import com.loopers.application.like.LikeApplicationService;
 import com.loopers.application.product.ProductApplicationService;
 import com.loopers.application.product.ProductInfo;
 import com.loopers.application.user.UserApplicationService;
+import com.loopers.infrastructure.metrics.ProductMetricsJpaEntity;
+import com.loopers.infrastructure.metrics.ProductMetricsJpaRepository;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResult;
 import com.loopers.utils.DatabaseCleanUp;
@@ -36,6 +38,7 @@ class ProductV1ApiE2ETest {
     private final ProductApplicationService productApplicationService;
     private final LikeApplicationService likeApplicationService;
     private final UserApplicationService userApplicationService;
+    private final ProductMetricsJpaRepository productMetricsJpaRepository;
     private final DatabaseCleanUp databaseCleanUp;
     private final RedisCleanUp redisCleanUp;
 
@@ -46,6 +49,7 @@ class ProductV1ApiE2ETest {
             ProductApplicationService productApplicationService,
             LikeApplicationService likeApplicationService,
             UserApplicationService userApplicationService,
+            ProductMetricsJpaRepository productMetricsJpaRepository,
             DatabaseCleanUp databaseCleanUp,
             RedisCleanUp redisCleanUp
     ) {
@@ -54,6 +58,7 @@ class ProductV1ApiE2ETest {
         this.productApplicationService = productApplicationService;
         this.likeApplicationService = likeApplicationService;
         this.userApplicationService = userApplicationService;
+        this.productMetricsJpaRepository = productMetricsJpaRepository;
         this.databaseCleanUp = databaseCleanUp;
         this.redisCleanUp = redisCleanUp;
     }
@@ -168,8 +173,8 @@ class ProductV1ApiE2ETest {
             ProductInfo noLike = createProduct(brand.id(), "에어맥스", 80_000L, 10);
             ProductInfo hasLike = createProduct(brand.id(), "에어포스", 150_000L, 5);
 
-            String userId = userApplicationService.signup("testuser1", "Test1234!", "홍길동", LocalDate.of(1995, 1, 1), "test@test.com").id();
-            likeApplicationService.addLike(userId, hasLike.id());
+            // like_count는 streamer가 product_metrics에 반영하므로 직접 시드
+            productMetricsJpaRepository.save(new ProductMetricsJpaEntity(hasLike.id(), 0L, 1L, 0L));
 
             // act
             ParameterizedTypeReference<ApiResponse<PageResult<ProductV1Dto.PlpResponse>>> type =
@@ -195,8 +200,8 @@ class ProductV1ApiE2ETest {
             ProductInfo noLike = createProduct(brand.id(), "에어맥스", 80_000L, 10);
             ProductInfo hasLike = createProduct(brand.id(), "에어포스", 150_000L, 5);
 
-            String userId = userApplicationService.signup("testuser1", "Test1234!", "홍길동", LocalDate.of(1995, 1, 1), "test@test.com").id();
-            likeApplicationService.addLike(userId, hasLike.id());
+            // like_count는 streamer가 product_metrics에 반영하므로 직접 시드
+            productMetricsJpaRepository.save(new ProductMetricsJpaEntity(hasLike.id(), 0L, 1L, 0L));
 
             // act
             ParameterizedTypeReference<ApiResponse<PageResult<ProductV1Dto.PlpResponse>>> type =

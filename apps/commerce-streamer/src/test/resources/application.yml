@@ -1,0 +1,15 @@
+spring:
+  config:
+    import:
+      - jpa.yml
+      - redis.yml
+      - kafka.yml
+      - logging.yml
+      - monitoring.yml
+  kafka:
+    consumer:
+      auto-offset-reset: earliest
+
+demo-kafka:
+  test:
+    topic-name: demo.internal.topic-v1

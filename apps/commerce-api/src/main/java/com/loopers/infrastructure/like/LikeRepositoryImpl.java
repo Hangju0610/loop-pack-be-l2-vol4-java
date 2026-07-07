@@ -41,6 +41,11 @@ public class LikeRepositoryImpl implements LikeRepository {
     }
 
     @Override
+    public long countActiveByProductId(String productId) {
+        return likeJpaRepository.countByProductIdAndDeletedAtIsNull(productId);
+    }
+
+    @Override
     public void deleteAllByProductId(String productId) {
         likeJpaRepository.softDeleteAllByProductId(productId, ZonedDateTime.now());
     }

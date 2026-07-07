@@ -27,6 +27,9 @@ public class AuthInterceptorConfig implements WebMvcConfigurer {
                         "/api/v1/payments/callback"
                 );
 
+        registry.addInterceptor(new OptionalUserAuthInterceptor(userApplicationService))
+                .addPathPatterns("/api/v1/products/*");
+
         registry.addInterceptor(new AdminAuthInterceptor())
                 .addPathPatterns("/api-admin/v1/**");
     }

@@ -215,4 +215,102 @@ public class InventoryEntityTest {
             assertThrows(CoreException.class, () -> inventory.updateQuantity(null));
         }
     }
+
+    @DisplayName("재고 복원")
+    @Nested
+    class Restore {
+
+        @DisplayName("차감된 재고를 restore()하면 차감분이 정확히 복원된다.")
+        @Test
+        void restore_returnsDeductedQuantity_exactly() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, 10);
+            inventory.deduct(3);
+
+            // act
+            inventory.restore(3);
+
+            // assert
+            assertEquals(10, inventory.getQuantity());
+        }
+
+        @DisplayName("restore()는 기존 수량에 amount를 가산한다.")
+        @Test
+        void restore_addsAmountToQuantity() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, 5);
+
+            // act
+            inventory.restore(4);
+
+            // assert
+            assertEquals(9, inventory.getQuantity());
+        }
+
+        @DisplayName("amount가 1이면 정상 복원된다. (BVA)")
+        @Test
+        void restore_whenAmountIsOne() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, 5);
+
+            // act
+            inventory.restore(1);
+
+            // assert
+            assertEquals(6, inventory.getQuantity());
+        }
+
+        @DisplayName("amount가 0이면 예외가 발생한다.")
+        @Test
+        void restore_throwsException_whenAmountIsZero() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, VALID_QUANTITY);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> inventory.restore(0));
+        }
+
+        @DisplayName("amount가 음수이면 예외가 발생한다.")
+        @Test
+        void restore_throwsException_whenAmountIsNegative() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, VALID_QUANTITY);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> inventory.restore(-1));
+        }
+
+        @DisplayName("amount가 null이면 예외가 발생한다.")
+        @Test
+        void restore_throwsException_whenAmountIsNull() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, VALID_QUANTITY);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> inventory.restore(null));
+        }
+
+        @DisplayName("quantity + amount가 Integer 범위를 넘으면 음수 래핑 없이 예외가 발생한다.")
+        @Test
+        void restore_throwsException_whenSumOverflowsIntegerRange() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, Integer.MAX_VALUE - 1);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> inventory.restore(2));
+        }
+
+        @DisplayName("quantity + amount가 정확히 Integer.MAX_VALUE이면 정상 복원된다. (BVA)")
+        @Test
+        void restore_whenSumIsExactlyMaxValue() {
+            // arrange
+            InventoryEntity inventory = new InventoryEntity(VALID_PRODUCT_ID, Integer.MAX_VALUE - 1);
+
+            // act
+            inventory.restore(1);
+
+            // assert
+            assertEquals(Integer.MAX_VALUE, inventory.getQuantity());
+        }
+    }
 }

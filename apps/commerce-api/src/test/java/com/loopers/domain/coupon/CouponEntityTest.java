@@ -47,42 +47,174 @@ public class CouponEntityTest {
         }
     }
 
-    @DisplayName("쿠폰 사용")
+    @DisplayName("쿠폰 예약")
     @Nested
-    class Use {
+    class Reserve {
 
-        @DisplayName("AVAILABLE 상태의 쿠폰을 사용하면 USED로 변경된다.")
+        @DisplayName("AVAILABLE 상태의 쿠폰을 예약하면 RESERVED로 변경된다.")
         @Test
-        void changesStatusToUsed_whenCouponIsAvailable() {
+        void changesStatusToReserved_whenCouponIsAvailable() {
             // arrange
             CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
 
             // act
-            coupon.use();
+            coupon.reserve();
+
+            // assert
+            assertEquals(CouponStatus.RESERVED, coupon.getStatus());
+        }
+
+        @DisplayName("AVAILABLE 상태가 아닌 쿠폰을 예약하면 예외가 발생한다.")
+        @Test
+        void throwsException_whenCouponIsNotAvailable() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+            coupon.reserve();
+
+            // act & assert
+            assertThrows(CoreException.class, coupon::reserve);
+        }
+    }
+
+    @DisplayName("쿠폰 확정")
+    @Nested
+    class Confirm {
+
+        @DisplayName("RESERVED 상태의 쿠폰을 확정하면 USED로 변경된다.")
+        @Test
+        void changesStatusToUsed_whenCouponIsReserved() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+            coupon.reserve();
+
+            // act
+            coupon.confirm();
 
             // assert
             assertEquals(CouponStatus.USED, coupon.getStatus());
         }
 
-        @DisplayName("USED 상태의 쿠폰을 사용하면 예외가 발생한다.")
+        @DisplayName("RESERVED 상태가 아닌 쿠폰을 확정하면 예외가 발생한다.")
+        @Test
+        void throwsException_whenCouponIsNotReserved() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+
+            // act & assert
+            assertThrows(CoreException.class, coupon::confirm);
+        }
+
+        @DisplayName("이미 USED인 쿠폰을 다시 확정하면 예외가 발생한다. (CX-9)")
         @Test
         void throwsException_whenCouponIsAlreadyUsed() {
             // arrange
             CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
-            coupon.use();
+            coupon.reserve();
+            coupon.confirm();
 
             // act & assert
-            assertThrows(CoreException.class, coupon::use);
+            assertThrows(CoreException.class, coupon::confirm);
+        }
+    }
+
+    @DisplayName("쿠폰 예약 해제")
+    @Nested
+    class Release {
+
+        @DisplayName("RESERVED 상태의 쿠폰을 해제하면 AVAILABLE로 복구된다.")
+        @Test
+        void changesStatusToAvailable_whenCouponIsReserved() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+            coupon.reserve();
+
+            // act
+            coupon.release();
+
+            // assert
+            assertEquals(CouponStatus.AVAILABLE, coupon.getStatus());
         }
 
-        @DisplayName("EXPIRED 상태의 쿠폰을 사용하면 예외가 발생한다.")
+        @DisplayName("RESERVED 상태가 아닌 쿠폰을 해제하면 예외가 발생한다.")
         @Test
-        void throwsException_whenCouponIsExpired() {
+        void throwsException_whenCouponIsNotReserved() {
             // arrange
-            CouponEntity coupon = CouponEntity.of("1", VALID_TEMPLATE_ID, VALID_USER_ID, CouponStatus.EXPIRED, null, null, null);
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
 
             // act & assert
-            assertThrows(CoreException.class, coupon::use);
+            assertThrows(CoreException.class, coupon::release);
+        }
+
+        @DisplayName("이미 USED인 쿠폰을 해제하면 예외가 발생한다. (CX-9)")
+        @Test
+        void throwsException_whenCouponIsAlreadyUsed() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+            coupon.reserve();
+            coupon.confirm();
+
+            // act & assert
+            assertThrows(CoreException.class, coupon::release);
+        }
+
+        @DisplayName("해제 후 다시 예약하면 성공한다. (CX-9, release→re-reserve)")
+        @Test
+        void canReserveAgain_afterRelease() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+            coupon.reserve();
+            coupon.release();
+
+            // act
+            coupon.reserve();
+
+            // assert
+            assertEquals(CouponStatus.RESERVED, coupon.getStatus());
+        }
+    }
+
+    @DisplayName("쿠폰 사용 가능 검증")
+    @Nested
+    class Validate {
+
+        @DisplayName("소유자가 아니면 validateOwnedBy에서 예외가 발생한다.")
+        @Test
+        void throwsException_whenNotOwner() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> coupon.validateOwnedBy("other"));
+        }
+
+        @DisplayName("소유자이면 validateOwnedBy를 통과한다.")
+        @Test
+        void passes_whenOwner() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+
+            // act & assert
+            assertDoesNotThrow(() -> coupon.validateOwnedBy(VALID_USER_ID));
+        }
+
+        @DisplayName("만료일이 지났으면 validateNotExpired에서 예외가 발생한다.")
+        @Test
+        void throwsException_whenExpired() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+
+            // act & assert
+            assertThrows(CoreException.class, () -> coupon.validateNotExpired(PAST));
+        }
+
+        @DisplayName("만료일이 지나지 않았으면 validateNotExpired를 통과한다.")
+        @Test
+        void passes_whenNotExpired() {
+            // arrange
+            CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
+
+            // act & assert
+            assertDoesNotThrow(() -> coupon.validateNotExpired(FUTURE));
         }
     }
 
@@ -121,7 +253,8 @@ public class CouponEntityTest {
         void returnsUsed_whenCouponIsUsed() {
             // arrange
             CouponEntity coupon = new CouponEntity(VALID_TEMPLATE_ID, VALID_USER_ID);
-            coupon.use();
+            coupon.reserve();
+            coupon.confirm();
 
             // act
             CouponStatus status = coupon.resolveStatus(PAST);

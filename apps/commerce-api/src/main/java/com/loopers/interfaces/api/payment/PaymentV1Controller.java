@@ -31,8 +31,10 @@ public class PaymentV1Controller implements PaymentV1ApiSpec {
 
     @PostMapping("/callback")
     public ResponseEntity<Void> callback(@RequestBody PaymentV1Dto.CallbackRequest request) {
-        paymentApplicationService.processCallback(
+        paymentApplicationService.handlePgCallback(
             request.transactionKey(),
+            request.orderId(),
+            request.amount(),
             request.status(),
             request.reason()
         );

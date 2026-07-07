@@ -2,6 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.domain.payment.CardType;
 import com.loopers.domain.payment.PaymentEntity;
+import com.loopers.domain.payment.PaymentRepository;
 import com.loopers.domain.payment.PaymentService;
 import com.loopers.domain.payment.PaymentStatus;
 import com.loopers.domain.payment.PgClient;
@@ -21,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 public class PaymentApplicationService {
 
     private final PaymentService paymentService;
+    private final PaymentPreparationService paymentPreparationService;
+    private final PaymentRepository paymentRepository;
     private final PgClient pgClient;
     private final PaymentWaitingRegistry registry;
     private final String callbackUrl;
@@ -28,12 +31,16 @@ public class PaymentApplicationService {
 
     public PaymentApplicationService(
         PaymentService paymentService,
+        PaymentPreparationService paymentPreparationService,
+        PaymentRepository paymentRepository,
         PgClient pgClient,
         PaymentWaitingRegistry registry,
         @Value("${pg.callback-url:http://localhost:8080/api/v1/payments/callback}") String callbackUrl,
         @Value("${pg.callback-timeout-seconds:10}") long callbackTimeoutSeconds
     ) {
         this.paymentService = paymentService;
+        this.paymentPreparationService = paymentPreparationService;
+        this.paymentRepository = paymentRepository;
         this.pgClient = pgClient;
         this.registry = registry;
         this.callbackUrl = callbackUrl;
@@ -41,8 +48,8 @@ public class PaymentApplicationService {
     }
 
     public CompletableFuture<PaymentInfo> initiate(String userId, String orderId, CardType cardType, String cardNo) {
-        // TX1: 락 + 검증 + PENDING 저장
-        PaymentEntity payment = paymentService.prepare(userId, orderId, cardType, cardNo);
+        // TX1: 주문 락 + 검증 + 결제 중복검사 + PENDING 저장 (코디네이터가 한 TX로 조율)
+        PaymentEntity payment = paymentPreparationService.prepare(userId, orderId, cardType, cardNo);
         String paymentId = payment.getId();
 
         // TX 외부: PG 호출
@@ -57,14 +64,9 @@ public class PaymentApplicationService {
             throw e;
         }
 
-        // TX2: transactionKey 저장 + PG 즉시 확정 반영
+        // TX2: transactionKey 저장 (PG 요청 응답은 항상 PENDING, 확정은 콜백/폴로만 온다)
         paymentService.applyPgResponse(paymentId, pgResponse);
         String transactionKey = pgResponse.transactionKey();
-
-        // PG가 즉시 확정(SUCCESS/FAILED)이면 콜백 대기 없이 즉시 반환
-        if (pgResponse.status() != PgTransactionStatus.PENDING) {
-            return CompletableFuture.completedFuture(infoOf(transactionKey));
-        }
 
         // 콜백 대기 future 구성
         // NOTE: TX2 커밋 후 여기까지 오는 사이에 PG 콜백이 먼저 도착하면 해당 콜백은
@@ -92,8 +94,15 @@ public class PaymentApplicationService {
         paymentService.settle(transactionKey, status, reason); // first-wins 멱등
     }
 
+    /** PG 콜백(신뢰 불가 인바운드) 처리: 무결성 검증 후 정산. 불일치 콜백은 보상 전에 거부된다. */
+    public void handlePgCallback(String transactionKey, String orderId, Long amount,
+            PgTransactionStatus status, String reason) {
+        paymentService.assertCallbackConsistent(transactionKey, orderId, amount);
+        processCallback(transactionKey, status, reason);
+    }
+
     public PaymentInfo getPayment(String userId, String paymentId) {
-        PaymentEntity payment = paymentService.getOrThrow(paymentId);
+        PaymentEntity payment = findByIdOrThrow(paymentId);
         if (!payment.isOwnedBy(userId)) {
             throw new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다.");
         }
@@ -112,6 +121,16 @@ public class PaymentApplicationService {
     }
 
     private PaymentInfo infoOf(String transactionKey) {
-        return PaymentInfo.from(paymentService.getByTransactionKey(transactionKey));
+        return PaymentInfo.from(findByTransactionKeyOrThrow(transactionKey));
+    }
+
+    private PaymentEntity findByIdOrThrow(String paymentId) {
+        return paymentRepository.findById(paymentId)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
+    }
+
+    private PaymentEntity findByTransactionKeyOrThrow(String transactionKey) {
+        return paymentRepository.findByTransactionKey(transactionKey)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "결제 정보를 찾을 수 없습니다."));
     }
 }

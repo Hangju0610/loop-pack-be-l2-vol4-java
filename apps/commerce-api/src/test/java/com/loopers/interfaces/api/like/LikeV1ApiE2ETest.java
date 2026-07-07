@@ -203,6 +203,7 @@ class LikeV1ApiE2ETest {
 
             ParameterizedTypeReference<ApiResponse<PageResult<LikeV1Dto.LikeResponse>>> type =
                     new ParameterizedTypeReference<>() {};
+
             ResponseEntity<ApiResponse<PageResult<LikeV1Dto.LikeResponse>>> response =
                     testRestTemplate.exchange(
                             "/api/v1/users/" + userId + "/likes?page=0&size=20",

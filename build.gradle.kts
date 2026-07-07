@@ -17,11 +17,11 @@ plugins {
     id("io.spring.dependency-management")
 }
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
+//java {
+//    toolchain {
+//        languageVersion = JavaLanguageVersion.of(21)
+//    }
+//}
 
 allprojects {
     val projectGroup: String by project
@@ -34,6 +34,7 @@ allprojects {
 }
 
 subprojects {
+
     apply(plugin = "java")
     apply(plugin = "org.springframework.boot")
     apply(plugin = "io.spring.dependency-management")
@@ -79,7 +80,9 @@ subprojects {
 
     tasks.test {
         maxParallelForks = 1
-        useJUnitPlatform()
+        useJUnitPlatform {
+            excludeTags("performance")
+        }
         systemProperty("user.timezone", "Asia/Seoul")
         systemProperty("spring.profiles.active", "test")
         jvmArgs("-Xshare:off")
@@ -101,6 +104,12 @@ subprojects {
                     },
                 ),
             )
+        }
+    }
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
         }
     }
 }
