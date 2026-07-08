@@ -61,7 +61,8 @@
       "Bash(./gradlew :apps:commerce-api:test --tests 'com.loopers.interfaces.api.product.ProductV1ApiE2ETest$GetProducts')",
       "Bash(./gradlew :apps:commerce-api:test --tests 'com.loopers.interfaces.api.product.ProductV1ApiE2ETest$GetProducts.plpResponse_doesNotContainQuantityAndDescription')",
       "Bash(./gradlew :apps:commerce-api:test --tests \"com.loopers.infrastructure.payment.PgRestClientTest\")",
-      "Bash(./gradlew :apps:commerce-api:test --tests \"com.loopers.*payment*\" --tests \"com.loopers.application.payment.*\" --tests \"com.loopers.interfaces.api.payment.*\")"
+      "Bash(./gradlew :apps:commerce-api:test --tests \"com.loopers.*payment*\" --tests \"com.loopers.application.payment.*\" --tests \"com.loopers.interfaces.api.payment.*\")",
+      "Bash(./gradlew :apps:commerce-api:test --tests \"com.loopers.domain.waitingqueue.*\")"
     ]
   }
 }
