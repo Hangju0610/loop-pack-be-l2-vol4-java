@@ -78,7 +78,7 @@ sequenceDiagram
         alt 대기 중 (rank 존재)
             RC-->>SVC: position = rank + 1 (1-base)
             SVC->>EWP: calculate(position)
-            EWP-->>SVC: estimatedWaitSeconds = ceil(position / 20) × 0.1초
+            EWP-->>SVC: estimatedWaitSeconds = ceil(position / 200)초 (올림, 최소 1초)
             SVC-->>CTL: Info { position, estimatedWaitSeconds }
             CTL-->>C: 200 OK { "position": 123, "estimatedWaitSeconds": 120 }
         else 미등록 (rank = null)
