@@ -101,10 +101,11 @@
 ### 5-4. 예상 대기 시간 — `EstimatedWaitPolicy`
 
 ```
-estimatedWaitSeconds = ceil(position / 20) × 0.1초
+estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올림, 최소 1초
 ```
 
-- 100ms 마다 20명씩 고정 발급이므로 순수 산수로 계산 가능하다.
+- 100ms 마다 20명씩 고정 발급이므로 순수 산수로 계산 가능하다. (= 초당 200명 → 사실상 `ceil(position / 200)` 초)
+- 반환은 **초 단위 long, 올림** — 1초 미만 구간도 최소 1초로 응답한다. (API 필드명 `estimatedWaitSeconds` 유지)
 - `EstimatedWaitPolicy.calculate(position)` — 순수 Java 도메인 정책 클래스.
 
 ### 5-5. 클라이언트 폴링 가이드
