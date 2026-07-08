@@ -62,7 +62,7 @@ sequenceDiagram
     SVC->>ETR: find(userId)
     ETR->>R: GET entry-token:{userId}
     R-->>ETR: UUID or nil
-    ETR-->>SVC: Optional&lt;EntryTokenVO&gt;
+    ETR-->>SVC: Optional[EntryTokenVO]
 
     alt 토큰 발급 완료
         SVC-->>CTL: Info { position: 0, entryToken: "xxx" }
