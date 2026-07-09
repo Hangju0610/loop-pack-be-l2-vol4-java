@@ -31,7 +31,7 @@ public class WaitingQueueApplicationService {
     public WaitingQueueInfo.Enter enter(String userId) {
         WaitingQueueEntryVO entry = WaitingQueueEntryVO.create(userId);
         waitingQueueRepository.add(entry);
-        return new WaitingQueueInfo.Enter(entry.userId(), entry.timestamp());
+        return new WaitingQueueInfo.Enter(entry.userId(), entry.timestamp(), waitingQueueRepository.count());
     }
 
     public WaitingQueueInfo.Position getPosition(String userId) {

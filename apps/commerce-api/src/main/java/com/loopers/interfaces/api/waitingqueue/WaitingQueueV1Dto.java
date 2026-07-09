@@ -4,9 +4,9 @@ import com.loopers.application.waitingqueue.WaitingQueueInfo;
 
 public class WaitingQueueV1Dto {
 
-    public record EnterResponse(String userId, long timestamp) {
+    public record EnterResponse(String userId, long timestamp, long waitingCount) {
         public static EnterResponse from(WaitingQueueInfo.Enter info) {
-            return new EnterResponse(info.userId(), info.timestamp());
+            return new EnterResponse(info.userId(), info.timestamp(), info.waitingCount());
         }
     }
 

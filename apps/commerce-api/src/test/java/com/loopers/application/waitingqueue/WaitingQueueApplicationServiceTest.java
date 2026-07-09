@@ -52,6 +52,17 @@ class WaitingQueueApplicationServiceTest {
             assertThat(result.timestamp()).isPositive();
             assertThat(waitingQueueRepository.findRank("user-1")).contains(0L);
         }
+
+        @Test
+        @DisplayName("진입 시 현재 대기열의 전체 인원 수(waitingCount)를 함께 반환한다")
+        void returns_total_waiting_count() {
+
+            waitingQueueApplicationService.enter("user-1");
+
+            WaitingQueueInfo.Enter result = waitingQueueApplicationService.enter("user-2");
+
+            assertThat(result.waitingCount()).isEqualTo(2L);
+        }
     }
 
     @Nested
