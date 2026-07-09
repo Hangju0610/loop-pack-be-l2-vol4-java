@@ -1,6 +1,7 @@
 # 대기열 성능 테스트 (k6)
 
 - 작성일: 2026-07-10
+- 수정일: 2026-07-10 — 1차 실행 결과 기입, spike 30초 ramp-up 도입, loadtest 모니터링(redis_exporter + Grafana) 추가
 - 스크립트: `k6/waiting-queue-load.js` (공통 헬퍼: `k6/lib/helpers.js`)
 - 대상: `POST /api/v1/queue/enter` → `GET /api/v1/queue/position` 폴링 → `POST /api/v1/orders`(Entry-Token 검증) → `POST /api/v1/payments` → 결제 성공 시 토큰 삭제(`EntryTokenConsumeEventListener`)까지의 전체 흐름
 
@@ -27,9 +28,10 @@
 
 ### S1. 스파이크 + 폴링 부하 (`SCENARIO=spike`, 기본)
 
-10,000 VU가 동시에 대기열에 진입한 뒤, 각자 토큰을 받을 때까지 `/queue/position`을 폴링한다.
+10,000 VU가 30초(`RAMP`, 기본 30) 동안 균등하게 대기열에 진입한 뒤, 각자 토큰을 받을 때까지 `/queue/position`을 폴링한다.
 
-- **진입**: 10,000명 동시 `POST /queue/enter` — 스케줄러 배치 크기(20명)를 500배 초과하는 유입.
+- **진입**: 초당 약 333명 `POST /queue/enter` — 발급 속도(초당 200명)를 계속 초과하는 유입.
+- **왜 동시 진입이 아닌가**: 1차 실행에서 10,000명을 같은 순간에 투입하자 TCP 연결/Tomcat 스레드풀 한계로 서버가 연결 수락조차 못 했다(enter 타임아웃·dial i/o timeout 폭주, 11분간 46명 완료). 이는 대기열 로직이 아니라 접속 계층의 붕괴라 측정 의미가 없어, 현실적인 스파이크(짧은 시간 내 집중 유입)로 조정했다. `RAMP=0`으로 동시 진입 재현은 가능하다.
 - **폴링 정책** (설계 문서 5-7과 동일):
 
   | 남은 순번 | 폴링 간격 |
@@ -77,30 +79,76 @@ PG 시뮬레이터가 요청의 40%를 실패시키므로, 결제 실패 → 토
 ## 5. 실행 방법
 
 ```shell
-# 사전 준비: infra + pg-simulator + commerce-api 기동 (k6/README.md 참고)
+# 사전 준비: infra + monitoring + pg-simulator + commerce-api 기동 (k6/README.md 참고)
 
-# S1: 스파이크 + 폴링 (기본: 유저 10,000 / 상품 100)
+# 권장: 실행기 사용 — redis-exporter 를 테스트 동안만 띄우고 k6 메트릭을 remote-write
+./k6/run-waiting-queue.sh                                    # S1: 10,000명 / 30초 ramp
+./k6/run-waiting-queue.sh -e USERS=1000                      # 축소 리허설
+./k6/run-waiting-queue.sh -e SCENARIO=saturation -e RATE=300 # S2
+
+# 모니터링 없이 k6 콘솔 요약만
 k6 run k6/waiting-queue-load.js
-k6 run -e USERS=1000 k6/waiting-queue-load.js          # 축소 리허설
-
-# S2: 지속 유입 초과 (초당 300명 진입)
-k6 run -e SCENARIO=saturation -e RATE=300 k6/waiting-queue-load.js
 ```
 
-주요 env: `USERS`(기본 10000), `PRODUCTS`(기본 100), `SCENARIO`(spike|saturation), `RATE`(saturation 진입 속도, 기본 300), `MAX_WAIT`(토큰 대기 한도 초, 기본 300), `BASE_URL`.
+주요 env: `USERS`(기본 10000), `PRODUCTS`(기본 100), `SCENARIO`(spike|saturation), `RAMP`(spike 진입 분산 초, 기본 30, 0=동시), `RATE`(saturation 진입 속도, 기본 300), `MAX_WAIT`(토큰 대기 한도 초, 기본 300), `QUEUE_TIMEOUT`(enter/position 요청 타임아웃, 기본 30s), `BASE_URL`.
+
+### 실시간 모니터링 (부하 테스트 시에만)
+
+`run-waiting-queue.sh`가 `redis-exporter`(monitoring-compose의 `loadtest` profile)를 테스트 동안만 띄우고 종료 시 내린다. Grafana → 폴더 `Loopers` → **WaitingQueue · 대기열 부하 테스트** 대시보드에서 확인:
+
+| 패널 | 소스 | 의미 |
+| ---- | ---- | ---- |
+| 대기열 길이 | `redis_key_size{key="waiting-queue"}` (ZCARD) | 유입>발급 구간에서 자라고 배출되며 감소하는 곡선 |
+| Entry-Token 수 | `redis_keys_count{key="entry-token:*"}` (SCAN) | 발급됐지만 미소비·미만료 토큰 수 |
+| enter/position p95, 대기 시간 p95, 결제 결과, 흐름 결과 | k6 remote-write | 테스트 관점 지표 |
 
 ## 6. 결과 기록
 
-> 실행 후 기입한다.
+### 1차 실행 (2026-07-10, ramp 도입 전)
 
-| 항목 | S1 (spike) | S2 (saturation) |
+| 항목 | 리허설 S1 (USERS=500, 동시 진입) | 풀 스케일 S1 (USERS=10,000, 동시 진입) |
 | ---- | ---- | ---- |
-| enter p95 | - | - |
-| position p95 | - | - |
-| queue_wait_time p95 | - | - |
-| 결제 성공률 (TOKEN_CONSUMED) | - | - |
-| token_reuse 성공률 | - | - |
-| 발급 TPS 판정 | - | - |
+| 완주 | 500/500 (WAIT_TIMEOUT 0) | **46/10,000 — 서버 접속 붕괴로 중단** |
+| enter p95 | 11.49s (기준 1s 초과) | 측정 불가 (요청/연결 타임아웃 폭주) |
+| position p95 | 10.13s (기준 1s 초과) | 측정 불가 |
+| queue_wait_time p95 | 11.16s (이론값 2.5s) | - |
+| 결제 결과 | **PG_REQUEST_FAILED 855/893 (96%)**, SUCCESS 9, PENDING 26 | - |
+| 토큰 소비 | TOKEN_CONSUMED 0 / ON_RETRY 122 / NOT_CONSUMED 310 | - |
+| token_reuse | 461회 (재사용 주문 401 거부 0건 — 실패 시 토큰 유지 정책 정상 동작) | - |
+| 발급 TPS 판정 | **초당 200명 발급은 명백한 과속.** PG 시뮬레이터 기본 실패율 40%를 훨씬 넘는 96%가 PG 요청 단계에서 실패했고, 결제 평균 30초·최대 59초로 Tomcat 스레드(max 200)가 결제 콜백 대기에 점유되면서 enter/position까지 연쇄 지연됐다. | 동시 10,000 진입은 접속 계층에서 붕괴 → spike 를 30초 ramp 로 변경 |
+
+**1차 결론**
+1. 배치 20명/100ms(200/s)는 다운스트림(주문-결제) 처리량을 크게 초과한다. PG 콜백 1~5초 기준 결제 처리량은 초당 수십 건 수준이므로 배치 크기 축소(예: 2~5명/100ms) 또는 간격 확대가 필요하다.
+2. 결제 실패 → 동일 토큰 재주문(S3) 경로는 부하 중에도 정상 동작했다 (재사용 주문 401 거부 0건).
+3. enter/position 지연의 주 원인은 대기열(Redis)이 아니라 결제 블로킹의 스레드풀 점유 + 요청당 BCrypt 인증이다 (7-1 참고).
+
+### 2차 실행 (2026-07-10, ramp 30s, redis_exporter + Grafana 모니터링)
+
+S1 (USERS=10,000, RAMP=30) — 11분 38초, 10,000 iteration 전원 종료.
+
+| 항목 | S1 (spike, RAMP=30) | S2 (saturation, RATE=300) |
+| ---- | ---- | ---- |
+| 완주 | 10,000/10,000 (중단 없음) | 미실행 |
+| enter | **실패 7,550/10,000 (75.5%)** — 30초 타임아웃. p95 31.5s | - |
+| position | p95 30.41s, POSITION_ERROR 1,827 | - |
+| queue_wait_time p95 | 28.25s (진입 성공자 기준) | - |
+| 대기열 최대 길이 (Redis ZCARD 실측) | **412** — 대기열은 부하를 받지도 못함 | - |
+| 동시 Entry-Token 최대 (실측) | **7,493** — 발급됐지만 소비 주체가 없어 TTL 만료 대기 | - |
+| 결제 결과 | **SUCCESS 0**, PENDING 186, PG_REQUEST_FAILED 368, 나머지 타임아웃. 결제 평균 45.9s | - |
+| 토큰 소비 | TOKEN_CONSUMED 0 / ON_RETRY 34 / NOT_CONSUMED 422 | - |
+| token_reuse | 499회 (재사용 주문 401 거부 13건 — TTL 만료 추정) | - |
+
+**2차 결론 — 병목은 대기열이 아니라 인증(BCrypt)이다**
+
+1. **BCrypt가 시스템 전체 처리량을 초당 ~46건으로 캡핑한다.** 시드 단계에서 실측한 가입 속도(초당 46명)가 곧 서버의 BCrypt 처리 용량이고, enter·position·주문·결제 모든 요청이 요청마다 BCrypt 검증을 거친다. 초당 333명 진입 + 폴링 수천 건이 이 좁은 관문에 몰리면서 75.5%가 enter 30초 타임아웃으로 탈락했다.
+2. **클라이언트 타임아웃 ≠ 서버 거절.** k6 가 enter 실패로 집계한 유저 상당수가 서버 측에서는 뒤늦게 ZADD 처리됐다 — 진입 성공 집계(~2,450)보다 훨씬 많은 동시 토큰 7,493개가 그 증거다. 유저는 떠났는데 서버는 계속 발급해 토큰이 TTL 만료만 기다리며 쌓였다.
+3. **대기열(Redis)은 한 번도 스트레스를 받지 않았다.** 최대 길이 412 — 유효 유입(BCrypt 캡 ~46/s)이 발급 속도(200/s)에 한참 못 미쳐, 대기열은 항상 거의 비어 있었다. 즉 현 구성에서 "처리량 초과" 방어벽은 대기열이 아니라 의도치 않게 인증 계층이 되어 버렸다.
+4. **결제는 즉시 SUCCESS 0건.** 발급 속도를 논하기 전에, 대기열 진입·폴링 경로에서 BCrypt 인증을 제거(진입 시 1회 인증 후 세션/서명 토큰)하지 않으면 어떤 발급 TPS 도 의미 있게 측정할 수 없다.
+
+**후속 액션 제안**
+- (필수) 대기열 진입·폴링 경로의 요청당 BCrypt 제거 — 1회 인증 후 세션/서명 토큰 방식
+- 발급 배치 축소 (1차 결론: 다운스트림 결제 처리량은 초당 수십 건 수준)
+- 위 개선 후 S1/S2 재측정
 
 ## 7. 주의사항 (결과 해석 시)
 
