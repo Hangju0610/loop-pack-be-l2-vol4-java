@@ -1,15 +1,13 @@
-# k6 부하 테스트 — resilience4j(pgClient 서킷브레이커)
-
-100명의 유저가 여러 상품으로 주문 후 결제하는 상황(초당 30회 결제)을 모사해
-PG 연동 서킷브레이커(`pgClient`)의 동작을 관찰한다.
+# k6 부하 테스트
 
 ## 구성
 
 | 파일 | 용도 |
 |------|------|
 | `lib/helpers.js` | 공통: 시드(브랜드/상품/유저), 주문→결제 호출 |
-| `payment-load.js` | 기본 부하: 초당 30회 결제 (constant-arrival-rate) |
+| `payment-load.js` | 결제 기본 부하: 초당 30회 결제 (constant-arrival-rate) |
 | `payment-cb-open.js` | 서킷브레이커 OPEN 을 유발하는 버스트 프로파일 + CB 상태 폴링 |
+| `waiting-queue-load.js` | 대기열 처리량 초과: 스파이크/지속 유입 + 폴링 + 주문-결제-토큰소비 |
 | `../docker/grafana/provisioning/dashboards/resilience4j-payment.json` | Grafana 대시보드(자동 프로비저닝) |
 
 ## 사전 준비
@@ -42,6 +40,11 @@ k6 run -e RATE=30 -e DURATION=2m -e USERS=100 k6/payment-load.js
   --resilience4j.circuitbreaker.instances.pgClient.slow-call-duration-threshold=300ms \
   --resilience4j.circuitbreaker.instances.pgClient.wait-duration-in-open-state=10s'
 k6 run k6/payment-cb-open.js
+
+# 대기열 처리량 초과 (docs/domain/waiting-queue/03-performance-test.md 참고)
+k6 run k6/waiting-queue-load.js                                    # S1: 10,000명 동시 진입
+k6 run -e USERS=1000 k6/waiting-queue-load.js                      # 축소 리허설
+k6 run -e SCENARIO=saturation -e RATE=300 k6/waiting-queue-load.js # S2: 유입 > 발급 지속
 ```
 
 ## 결과 관찰
