@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
@@ -126,9 +127,8 @@ class WaitingQueueApplicationServiceTest {
             EntryTokenVO token = EntryTokenVO.create("user-1");
             entryTokenRepository.save(token);
 
-            org.assertj.core.api.Assertions.assertThatCode(
-                    () -> waitingQueueApplicationService.validateEntryToken("user-1", token.token())
-            ).doesNotThrowAnyException();
+            assertThatCode(() -> waitingQueueApplicationService.validateEntryToken("user-1", token.token()))
+                    .doesNotThrowAnyException();
         }
 
         @Test
@@ -151,6 +151,30 @@ class WaitingQueueApplicationServiceTest {
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.UNAUTHORIZED)
                     .hasMessageContaining("Entry-Token이 일치하지 않습니다");
+        }
+    }
+
+    @Nested
+    @DisplayName("consumeEntryToken")
+    class ConsumeEntryToken {
+
+        @Test
+        @DisplayName("저장된 토큰을 소비하면 삭제되어 더 이상 조회되지 않는다")
+        void deletes_stored_token() {
+
+            entryTokenRepository.save(EntryTokenVO.create("user-1"));
+
+            waitingQueueApplicationService.consumeEntryToken("user-1");
+
+            assertThat(entryTokenRepository.find("user-1")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("토큰이 없는 유저를 소비해도 예외 없이 no-op으로 처리된다")
+        void consuming_without_token_is_noop() {
+
+            assertThatCode(() -> waitingQueueApplicationService.consumeEntryToken("user-none"))
+                    .doesNotThrowAnyException();
         }
     }
 }

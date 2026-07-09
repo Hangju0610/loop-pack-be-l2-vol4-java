@@ -7,4 +7,6 @@ public interface EntryTokenRepository {
     Optional<EntryTokenVO> find(String userId);
 
     void save(EntryTokenVO token);
+
+    void delete(String userId);
 }
