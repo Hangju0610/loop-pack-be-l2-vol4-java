@@ -15,14 +15,16 @@ class WaitingQueueEntryVOTest {
     class Create {
 
         @Test
-        @DisplayName("userId와 현재 시각(epoch millis) timestamp로 생성된다")
-        void success_with_current_epoch_millis_timestamp() {
+        @DisplayName("userId와 현재 시각(epoch microseconds) timestamp로 생성된다")
+        void success_with_current_epoch_micros_timestamp() {
 
-            long before = Instant.now().toEpochMilli();
+            Instant beforeInstant = Instant.now();
+            long before = beforeInstant.getEpochSecond() * 1_000_000 + beforeInstant.getNano() / 1_000;
 
             WaitingQueueEntryVO entry = WaitingQueueEntryVO.create("user-1");
 
-            long after = Instant.now().toEpochMilli();
+            Instant afterInstant = Instant.now();
+            long after = afterInstant.getEpochSecond() * 1_000_000 + afterInstant.getNano() / 1_000;
 
             assertThat(entry.userId()).isEqualTo("user-1");
             assertThat(entry.timestamp()).isBetween(before, after);

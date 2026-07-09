@@ -1,11 +1,15 @@
 package com.loopers.domain.waitingqueue;
 
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EstimatedWaitPolicyTest {
 
@@ -29,6 +33,16 @@ class EstimatedWaitPolicyTest {
             long waitSeconds = estimatedWaitPolicy.calculate(position);
 
             assertThat(waitSeconds).isEqualTo(expectedSeconds);
+        }
+
+        @ParameterizedTest(name = "position {0} → BAD_REQUEST")
+        @DisplayName("position이 0 이하이면 BAD_REQUEST 예외가 발생한다")
+        @ValueSource(longs = {0L, -1L})
+        void fail_when_position_is_not_positive(long position) {
+
+            assertThatThrownBy(() -> estimatedWaitPolicy.calculate(position))
+                    .isInstanceOf(CoreException.class)
+                    .hasFieldOrPropertyWithValue("errorType", ErrorType.BAD_REQUEST);
         }
     }
 }

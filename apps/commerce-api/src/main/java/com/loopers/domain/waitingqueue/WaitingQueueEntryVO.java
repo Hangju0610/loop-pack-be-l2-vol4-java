@@ -8,6 +8,11 @@ public record WaitingQueueEntryVO(
 ) {
 
     public static WaitingQueueEntryVO create(String userId) {
-        return new WaitingQueueEntryVO(userId, Instant.now().toEpochMilli());
+        return new WaitingQueueEntryVO(userId, epochMicros());
+    }
+
+    private static long epochMicros() {
+        Instant now = Instant.now();
+        return now.getEpochSecond() * 1_000_000 + now.getNano() / 1_000;
     }
 }

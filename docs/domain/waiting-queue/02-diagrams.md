@@ -24,7 +24,7 @@ sequenceDiagram
     CTL->>SVC: enter(userId)
 
     SVC->>VO: WaitingQueueEntryVO.create(userId)
-    Note over VO: timestamp = 현재 시각 (epoch millis)<br/>생성 규칙을 VO 정적 팩토리로 캡슐화
+    Note over VO: timestamp = 현재 시각 (epoch microseconds)<br/>생성 규칙을 VO 정적 팩토리로 캡슐화
     VO-->>SVC: entry {userId, timestamp}
 
     SVC->>WQR: add(entry)

@@ -43,11 +43,11 @@
 | 항목 | 값 |
 |------|-----|
 | Key | `waiting-queue` |
-| Score | epoch **milliseconds** (요청 시각) |
+| Score | epoch **microseconds** (요청 시각) |
 | Value | userId |
 | ZADD 옵션 | **GT** — 새 score 가 기존보다 클 때만 갱신 |
 
-- **score 를 밀리초로 하는 이유**: 초 단위면 같은 초 내 재호출 시 GT 조건(새 score > 기존 score)이 성립하지 않아 갱신이 누락된다.
+- **score 를 마이크로초로 하는 이유**: 밀리초 단위는 트래픽이 몰릴 때 동일 ms 에 여러 유저가 들어오면 score 가 같아져 Redis ZSET 정렬이 member 값 기준으로 처리되므로 삽입 순서(공정성)가 깨질 수 있다. 마이크로초로 정밀도를 높여 충돌 가능성을 낮춘다. (완전한 단조 증가는 보장하지 않으며, 극히 낮은 확률의 동시 충돌은 수용한다)
 - **GT 를 쓰는 이유 (새로고침 벌점 정책)**: enter 재호출(새로고침) 시 새 timestamp 로 score 가 갱신되어 대기열 **맨 뒤로 이동**한다. 새로고침이 이득이 되지 않도록 방어한다.
 
 ### 4-2. Entry-Token (String)
@@ -106,7 +106,7 @@ estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올
 
 - 100ms 마다 20명씩 고정 발급이므로 순수 산수로 계산 가능하다. (= 초당 200명 → 사실상 `ceil(position / 200)` 초)
 - 반환은 **초 단위 long, 올림** — 1초 미만 구간도 최소 1초로 응답한다. (API 필드명 `estimatedWaitSeconds` 유지)
-- `EstimatedWaitPolicy.calculate(position)` — 순수 Java 도메인 정책 클래스.
+- `EstimatedWaitPolicy.calculate(position)` — 순수 Java 도메인 정책 클래스. `position` 은 1-base 대기 순번만 유효하며(0 = 토큰 발급 완료는 별도 분기에서 처리), `position <= 0` 입력은 `CoreException(BAD_REQUEST)` 로 가드한다.
 
 ### 5-5. 클라이언트 폴링 가이드
 
