@@ -1,6 +1,7 @@
 package com.loopers.application.waitingqueue;
 
 import com.loopers.domain.waitingqueue.EntryTokenRepository;
+import com.loopers.domain.waitingqueue.EntryTokenValidatePolicy;
 import com.loopers.domain.waitingqueue.EntryTokenVO;
 import com.loopers.domain.waitingqueue.EstimatedWaitPolicy;
 import com.loopers.domain.waitingqueue.WaitingQueueEntryVO;
@@ -17,6 +18,7 @@ public class WaitingQueueApplicationService {
     private final EntryTokenRepository entryTokenRepository;
     private final WaitingQueueRankCalculator rankCalculator = new WaitingQueueRankCalculator();
     private final EstimatedWaitPolicy estimatedWaitPolicy = new EstimatedWaitPolicy();
+    private final EntryTokenValidatePolicy entryTokenValidatePolicy = new EntryTokenValidatePolicy();
 
     public WaitingQueueApplicationService(
             WaitingQueueRepository waitingQueueRepository,
@@ -47,5 +49,12 @@ public class WaitingQueueApplicationService {
         for (String userId : waitingQueueRepository.popMin(EstimatedWaitPolicy.BATCH_SIZE)) {
             entryTokenRepository.save(EntryTokenVO.create(userId));
         }
+    }
+
+    public void validateEntryToken(String userId, String headerToken) {
+        String storedToken = entryTokenRepository.find(userId)
+                .map(EntryTokenVO::token)
+                .orElse(null);
+        entryTokenValidatePolicy.validate(headerToken, storedToken);
     }
 }
