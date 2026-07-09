@@ -13,8 +13,6 @@ import java.util.Optional;
 @Service
 public class WaitingQueueApplicationService {
 
-    private static final int PUBLISH_BATCH_SIZE = 20;
-
     private final WaitingQueueRepository waitingQueueRepository;
     private final EntryTokenRepository entryTokenRepository;
     private final WaitingQueueRankCalculator rankCalculator = new WaitingQueueRankCalculator();
@@ -46,7 +44,7 @@ public class WaitingQueueApplicationService {
     }
 
     public void publishEntryTokens() {
-        for (String userId : waitingQueueRepository.popMin(PUBLISH_BATCH_SIZE)) {
+        for (String userId : waitingQueueRepository.popMin(EstimatedWaitPolicy.BATCH_SIZE)) {
             entryTokenRepository.save(EntryTokenVO.create(userId));
         }
     }

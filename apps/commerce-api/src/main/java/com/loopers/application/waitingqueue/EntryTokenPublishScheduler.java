@@ -1,5 +1,6 @@
 package com.loopers.application.waitingqueue;
 
+import com.loopers.domain.waitingqueue.EstimatedWaitPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,7 +13,7 @@ public class EntryTokenPublishScheduler {
 
     private final WaitingQueueApplicationService waitingQueueApplicationService;
 
-    @Scheduled(fixedDelay = 100)
+    @Scheduled(fixedRate = EstimatedWaitPolicy.PUBLISH_INTERVAL_MILLIS)
     public void publish() {
         waitingQueueApplicationService.publishEntryTokens();
     }
