@@ -53,4 +53,10 @@ public class WaitingQueueRepositoryImpl implements WaitingQueueRepository {
                 .map(ZSetOperations.TypedTuple::getValue)
                 .toList();
     }
+
+    @Override
+    public long count() {
+        Long size = redisTemplate.opsForZSet().zCard(WAITING_QUEUE_KEY);
+        return size == null ? 0L : size;
+    }
 }

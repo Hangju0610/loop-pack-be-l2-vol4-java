@@ -78,9 +78,9 @@ class WaitingQueueV1ApiE2ETest {
     @Nested
     class Enter {
 
-        @DisplayName("인증된 유저가 대기열에 진입하면 200과 userId, timestamp를 반환한다.")
+        @DisplayName("인증된 유저가 대기열에 진입하면 200과 userId, timestamp, waitingCount를 반환한다.")
         @Test
-        void returnsOk_withUserIdAndTimestamp_whenUserEnters() {
+        void returnsOk_withUserIdAndTimestampAndWaitingCount_whenUserEnters() {
             // arrange
             String userId = createUser();
 
@@ -96,6 +96,7 @@ class WaitingQueueV1ApiE2ETest {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(response.getBody().data().userId()).isEqualTo(userId);
             assertThat(response.getBody().data().timestamp()).isPositive();
+            assertThat(response.getBody().data().waitingCount()).isEqualTo(1L);
         }
 
         @DisplayName("인증 헤더 없이 요청하면 401을 반환한다.")

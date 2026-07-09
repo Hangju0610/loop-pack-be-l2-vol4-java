@@ -10,4 +10,6 @@ public interface WaitingQueueRepository {
     Optional<Long> findRank(String userId);
 
     List<String> popMin(int count);
+
+    long count();
 }

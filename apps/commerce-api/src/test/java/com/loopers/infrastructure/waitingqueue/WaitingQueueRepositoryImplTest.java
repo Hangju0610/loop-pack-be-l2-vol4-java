@@ -129,4 +129,30 @@ class WaitingQueueRepositoryImplTest {
             assertThat(popped).containsExactly("user-1");
         }
     }
+
+    @Nested
+    @DisplayName("count")
+    class Count {
+
+        @Test
+        @DisplayName("대기열이 비어 있으면 0을 반환한다")
+        void returns_zero_when_queue_is_empty() {
+
+            long count = waitingQueueRepository.count();
+
+            assertThat(count).isZero();
+        }
+
+        @Test
+        @DisplayName("대기열에 등록된 전체 인원 수를 반환한다")
+        void returns_number_of_waiting_users() {
+
+            waitingQueueRepository.add(new WaitingQueueEntryVO("user-1", 1000L));
+            waitingQueueRepository.add(new WaitingQueueEntryVO("user-2", 2000L));
+
+            long count = waitingQueueRepository.count();
+
+            assertThat(count).isEqualTo(2L);
+        }
+    }
 }
