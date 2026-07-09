@@ -13,7 +13,10 @@ import {
  *       → 결제 성공 시 토큰 삭제 확인(position 404) / 실패 시 동일 토큰 재주문 1회
  *
  * 시나리오 (docs/domain/waiting-queue/03-performance-test.md):
- *   S1 spike      : USERS 명이 동시에 진입 후 폴링 (기본)
+ *   S1 spike      : USERS 명이 RAMP 초에 걸쳐 진입 후 폴링 (기본)
+ *                   — 1차 실행에서 10,000명 '동시' 진입은 TCP/스레드풀 한계로 서버가
+ *                   연결 수락조차 못 했다(enter 타임아웃 폭주). VU 시작을 균등 분산해
+ *                   초당 USERS/RAMP 명(기본 333/s)으로 유입시킨다. RAMP=0 이면 동시 진입.
  *   S2 saturation : 초당 RATE 명씩 진입 — 발급 속도(200/s) 초과 유입 유지
  *   S3 (내장)     : 결제 실패 시 토큰 유지 → 동일 토큰 재주문 (PG 40% 실패로 자연 발생)
  *
@@ -31,6 +34,8 @@ const SCENARIO = __ENV.SCENARIO || 'spike';           // spike | saturation
 const USERS = Number(__ENV.USERS || 10000);
 const PRODUCTS = Number(__ENV.PRODUCTS || 100);
 const RATE = Number(__ENV.RATE || 300);               // saturation: 초당 진입 수
+const RAMP_S = Number(__ENV.RAMP || 30);              // spike: 진입 분산 시간(초). 0 = 동시 진입
+const QUEUE_TIMEOUT = __ENV.QUEUE_TIMEOUT || '30s';   // enter/position 요청 타임아웃
 const MAX_WAIT_S = Number(__ENV.MAX_WAIT || 300);     // 토큰 발급 대기 한도(초)
 const CONSUME_WAIT_S = Number(__ENV.CONSUME_WAIT || 20); // 결제 후 토큰 삭제 판정 한도(초)
 const RUN = __ENV.RUN_ID || `wq${Date.now()}`;
@@ -100,6 +105,11 @@ export default function (data) {
     : exec.vu.idInTest - 1;
   const user = data.users[idx % data.users.length];
 
+  // spike: VU 시작 시점을 RAMP 초에 걸쳐 균등 분산 (동시 진입으로 인한 접속 붕괴 방지)
+  if (SCENARIO !== 'saturation' && RAMP_S > 0) {
+    sleep((idx % data.users.length) / data.users.length * RAMP_S);
+  }
+
   const token = enterAndWaitForToken(user);
   if (!token) return;
 
@@ -110,7 +120,8 @@ export default function (data) {
 function enterAndWaitForToken(user) {
   const headers = auth(user);
 
-  let res = http.post(`${BASE}/api/v1/queue/enter`, null, { headers, tags: { name: 'enter' } });
+  let res = http.post(`${BASE}/api/v1/queue/enter`, null,
+    { headers, timeout: QUEUE_TIMEOUT, tags: { name: 'enter' } });
   if (res.status !== 200) {
     flowResult.add(1, { status: 'ENTER_FAILED' });
     return null;
@@ -119,7 +130,8 @@ function enterAndWaitForToken(user) {
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < MAX_WAIT_S * 1000) {
-    res = http.get(`${BASE}/api/v1/queue/position`, { headers, tags: { name: 'position' } });
+    res = http.get(`${BASE}/api/v1/queue/position`,
+      { headers, timeout: QUEUE_TIMEOUT, tags: { name: 'position' } });
     if (res.status !== 200) {
       flowResult.add(1, { status: 'POSITION_ERROR' });
       return null;
@@ -194,7 +206,8 @@ function waitTokenConsumed(user) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < CONSUME_WAIT_S * 1000) {
     sleep(2);
-    const res = http.get(`${BASE}/api/v1/queue/position`, { headers, tags: { name: 'position' } });
+    const res = http.get(`${BASE}/api/v1/queue/position`,
+      { headers, timeout: QUEUE_TIMEOUT, tags: { name: 'position' } });
     if (res.status === 404) return true;
   }
   return false;

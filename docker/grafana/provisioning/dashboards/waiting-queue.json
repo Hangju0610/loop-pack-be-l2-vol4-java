@@ -1,0 +1,84 @@
+{
+  "title": "WaitingQueue · 대기열 부하 테스트",
+  "uid": "waiting-queue",
+  "tags": ["loopers", "waiting-queue", "k6"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "대기열 길이 (ZCARD waiting-queue)",
+      "datasource": "Prometheus",
+      "description": "redis-exporter(--profile loadtest) 필요. 유입>발급이면 자라고, 배출되면 감소하는 곡선.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": "Prometheus", "expr": "redis_key_size{key=\"waiting-queue\"}", "legendFormat": "waiting-queue" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "발급된 Entry-Token 수 (entry-token:*)",
+      "datasource": "Prometheus",
+      "description": "발급됐지만 아직 소비(결제 성공)·만료(TTL 5분)되지 않은 토큰 수.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": "Prometheus", "expr": "redis_keys_count{key=\"entry-token:*\"}", "legendFormat": "entry-token" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "k6 · enter / position p95 (ms)",
+      "datasource": "Prometheus",
+      "description": "k6 remote-write 필요 (run-waiting-queue.sh 사용 시 자동). SLO: p95 < 1000ms.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": "Prometheus", "expr": "k6_http_req_duration_p95{name=\"enter\"}", "legendFormat": "enter p95" },
+        { "refId": "B", "datasource": "Prometheus", "expr": "k6_http_req_duration_p95{name=\"position\"}", "legendFormat": "position p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "k6 · 대기 시간 p95 (진입→토큰 발급, ms)",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": "Prometheus", "expr": "k6_queue_wait_time_p95", "legendFormat": "queue_wait_time p95" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "k6 · 결제 결과 (건/s)",
+      "datasource": "Prometheus",
+      "description": "PG_REQUEST_FAILED 가 지배하면 발급 TPS 가 다운스트림 대비 과속이라는 신호.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": "Prometheus", "expr": "sum by (status) (rate(k6_pay_result_total[30s]))", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "k6 · 흐름 최종 결과 (누적)",
+      "datasource": "Prometheus",
+      "description": "TOKEN_CONSUMED = 결제 성공 + 토큰 삭제까지 완료.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": "Prometheus", "expr": "sum by (status) (k6_flow_result_total)", "legendFormat": "{{status}}" }
+      ]
+    }
+  ]
+}
