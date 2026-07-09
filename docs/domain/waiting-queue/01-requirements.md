@@ -1,7 +1,8 @@
 # WaitingQueue 도메인 요구사항
 
 - 작성일: 2026-07-08
-- 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(5-6) 추가
+- 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(5-5) 추가
+- 수정일: 2026-07-10 — 결제 완료 시 Entry-Token 소비(5-6) 추가
 - 상태: 확정
 
 ---
@@ -24,7 +25,8 @@
 2. `/queue/position`을 주기적으로 폴링하며 자신의 순번과 예상 대기 시간을 확인한다.
 3. 순번이 되면 응답으로 Entry-Token을 받는다. 이 토큰으로 보호 대상 API(주문 생성)에 접근한다.
 4. 주문 생성 시 `X-Loopers-Entry-Token` 헤더로 토큰을 제출하며, 서버는 Redis에 저장된 토큰과 일치하는지 검증한다.
-5. 토큰은 1회 입장권 개념이다. 새 구매를 진행하려면 다시 대기열에 진입한다.
+5. 결제가 완료되면 서버가 토큰을 삭제한다. 토큰은 **1회 입장권 = 1회 결제** 개념이다.
+6. 새 구매를 진행하려면 다시 대기열에 진입한다. (결제 실패 시에는 TTL 5분 내 재시도 가능)
 
 ---
 
@@ -36,6 +38,7 @@
 | US-02 | User | 순번 확인 (폴링) | 대기 중이면 position + estimatedWaitSeconds, 발급 완료면 position 0 + 토큰을 받는다 |
 | US-03 | System | 토큰 발급 | 스케줄러가 100ms 마다 대기열 앞에서 20명을 꺼내 Entry-Token 을 발급한다 |
 | US-04 | System | 주문 시 토큰 검증 | 주문 생성 요청의 Entry-Token 헤더가 Redis 저장 토큰과 일치해야 주문 로직이 진행된다 |
+| US-05 | System | 결제 완료 시 토큰 소비 | 결제 SUCCESS 확정 이벤트를 수신하면 해당 유저의 Entry-Token 을 삭제한다 |
 
 ---
 
@@ -61,8 +64,8 @@
 | Value | UUID |
 | TTL | **5분** |
 
-- 복잡한 검증 체계 없이 간결하게 유지한다. 토큰은 1회 입장권 개념이다.
-- **토큰 소비(삭제)는 현 범위에서 하지 않는다** — 결제 완료 후 이벤트로 처리할 예정(후속 작업). TTL 5분 내에는 재사용(주문 실패/재시도)이 가능하다.
+- 복잡한 검증 체계 없이 간결하게 유지한다. 토큰은 **1회 입장권 = 1회 결제** 개념이다.
+- **토큰 소비(삭제)는 결제 완료 이벤트에서 처리한다** (5-6). 주문 생성 시점에는 검증만 하고 삭제하지 않으므로, 결제 실패 시 TTL 5분 내 재사용(주문 재생성)이 가능하다.
 
 ---
 
@@ -124,9 +127,26 @@ estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올
 | 검증 | `WaitingQueueApplicationService.validateEntryToken(userId, headerToken)` — Redis `GET entry-token:{userId}` 결과와 헤더 토큰 비교. 판정 규칙은 도메인 정책 `EntryTokenValidatePolicy` 가 담당 |
 | 헤더 없음/저장 토큰 없음 | `401 UNAUTHORIZED` — "Entry-Token이 없습니다" |
 | 토큰 불일치 | `401 UNAUTHORIZED` — "Entry-Token이 일치하지 않습니다" |
-| 토큰 소비 | **하지 않음** — 결제 완료 이벤트에서 처리 예정 (후속 작업). TTL 내 재사용 허용 |
+| 토큰 소비 | **주문 시점에는 하지 않음** — 결제 완료 이벤트에서 삭제 (5-6). 결제 실패 시 TTL 내 재사용 허용 |
 
-### 5-6. 클라이언트 폴링 가이드
+### 5-6. 결제 완료 시 Entry-Token 소비 — `EntryTokenConsumeEventListener`
+
+결제가 SUCCESS 로 확정되면 해당 유저의 Entry-Token 을 삭제해 1회 입장권 = 1회 결제를 보장한다.
+
+| 항목 | 규칙 |
+|------|------|
+| 트리거 | `PaymentCompleteEvent(userId, orderId)` — `PaymentService` 가 결제 SUCCESS 확정 시 발행하는 기존 도메인 이벤트를 그대로 구독 |
+| 방식 | **코레오그래피** — `application.waitingqueue` 에 별도 리스너를 두고, 기존 `OrderPaymentEventListener`(주문·쿠폰 사가)와 독립적으로 같은 이벤트를 구독한다. `@Async` + `@TransactionalEventListener(AFTER_COMMIT)` (기존 패턴 동일) |
+| 동작 | `WaitingQueueApplicationService.consumeEntryToken(userId)` → `DEL entry-token:{userId}` |
+| 실패 정책 | **fire-and-forget** — 삭제 실패 시 로그만 남기고 삼킨다. 재시도하지 않으며 결제 완료 흐름에 영향을 주지 않는다. TTL 5분이 최종 방어선 |
+| 결제 실패 시 | 토큰 유지 — `PaymentFailedEvent` 는 구독하지 않는다. TTL 내 주문 재생성 시 재사용 가능 |
+| TTL 만료 시 | 재대기 — 만료 후 재사용은 공정성에 어긋나므로 다시 대기열에 진입한다 |
+| 재주문 | 결제 성공으로 토큰이 삭제되므로, 5분 내 두 번째 주문도 **다시 줄을 선다** (1회 입장권 = 1회 결제, 확정 정책) |
+| 멱등성 | DEL 은 멱등 — 토큰이 이미 만료/삭제된 상태여도 no-op (중복 이벤트 안전) |
+
+**설계 노트 (수용한 경쟁 조건)**: 결제 완료 이벤트가 토큰을 삭제하는 사이, 같은 유저가 그 토큰으로 새 주문 검증을 통과할 수 있는 밀리초 단위 창이 존재한다. 실질적 피해가 없어 방어하지 않는다 (검증-삭제 원자화는 오버엔지니어링으로 판단, 범위 제외).
+
+### 5-7. 클라이언트 폴링 가이드
 
 | position 구간 | 폴링 간격 |
 |---------------|----------|
@@ -161,7 +181,8 @@ interfaces.auth
 application.waitingqueue
 ├── WaitingQueueApplicationService     # Repository 포트 조합 (orchestration, validateEntryToken 포함)
 ├── WaitingQueueInfo                   # Application 계층 DTO
-└── EntryTokenPublishScheduler         # @Scheduled 토큰 발급
+├── EntryTokenPublishScheduler         # @Scheduled 토큰 발급
+└── EntryTokenConsumeEventListener     # PaymentCompleteEvent 구독 → 토큰 삭제 (AFTER_COMMIT, 비동기)
 
 domain.waitingqueue                    # 순수 Java — Spring/Redis/Repository 무의존
 ├── WaitingQueueEntryVO                # record. 정적 팩토리로 timestamp 생성 규칙 캡슐화
@@ -170,7 +191,7 @@ domain.waitingqueue                    # 순수 Java — Spring/Redis/Repository
 ├── EstimatedWaitPolicy                # position → 예상 대기 초 계산
 ├── EntryTokenValidatePolicy           # 헤더 토큰 vs 저장 토큰 판정 (없음/불일치 → UNAUTHORIZED)
 ├── WaitingQueueRepository             # 포트: add(ZADD GT) / findRank(ZRANK) / popMin(ZPOPMIN)
-└── EntryTokenRepository               # 포트: find(GET) / save(SET + TTL)
+└── EntryTokenRepository               # 포트: find(GET) / save(SET + TTL) / delete(DEL)
 
 infrastructure.waitingqueue
 ├── WaitingQueueRepositoryImpl         # RedisTemplate 어댑터 (ZAddArgs.empty().gt())
@@ -190,5 +211,6 @@ infrastructure.waitingqueue
 | 통합 | `WaitingQueueRepositoryImpl`, `EntryTokenRepositoryImpl`, `WaitingQueueApplicationService` | `RedisTestContainersConfig` + `RedisCleanUp` — GT 갱신 동작, ZPOPMIN 발급, TTL 검증 |
 | E2E | enter → position 폴링 → 토큰 수령 | `@SpringBootTest` + TestRestTemplate |
 | E2E (주문 게이트) | 유효 토큰 → 주문 성공 / 헤더 없음·불일치 → 401 / GET 주문 조회는 토큰 불필요 | `@SpringBootTest` + TestRestTemplate (`OrderV1ApiE2ETest` 의 주문 생성 케이스는 토큰 발급 후 헤더 포함으로 갱신) |
+| 통합 (토큰 소비) | `PaymentCompleteEvent` 발행 → 토큰 삭제 확인 / 토큰 없는 유저 이벤트 → no-op / 삭제 실패 시 예외 미전파 | 리스너가 비동기(AFTER_COMMIT)이므로 **Awaitility** 로 검증 (`PaymentApplicationServiceIntegrationTest` 선례 참고) |
 
 DB 를 사용하지 않으므로 `DatabaseCleanUp` 은 불필요하다.

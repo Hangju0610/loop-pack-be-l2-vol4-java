@@ -2,6 +2,7 @@
 
 - 작성일: 2026-07-08
 - 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(1-4) 추가
+- 수정일: 2026-07-10 — 결제 완료 시 Entry-Token 소비(1-5) 추가
 - 기준 문서: [01-requirements.md](01-requirements.md)
 
 ---
@@ -162,8 +163,44 @@ sequenceDiagram
     end
 ```
 
-- 토큰은 검증만 하고 **삭제하지 않는다** — 소비는 결제 완료 이벤트에서 처리 예정(후속 작업). TTL 5분 내 재사용(주문 실패/재시도) 허용.
+- 토큰은 검증만 하고 **삭제하지 않는다** — 소비는 결제 완료 이벤트에서 처리한다 (1-5). 결제 실패 시 TTL 5분 내 재사용(주문 재생성) 허용.
 - 인터셉터 순서: `UserAuthInterceptor` → `EntryTokenInterceptor`. userId 는 앞선 인터셉터가 세팅한 request attribute 에서 가져온다.
+
+### 1-5. 결제 완료 시 Entry-Token 소비 (코레오그래피)
+
+```mermaid
+sequenceDiagram
+    participant PS as PaymentService<br/>(TX_pay)
+    participant OPL as OrderPaymentEventListener<br/>(기존 — 주문·쿠폰 사가)
+    participant ECL as EntryTokenConsumeEventListener<br/>(신규 — application.waitingqueue)
+    participant SVC as WaitingQueueApplicationService
+    participant ETR as EntryTokenRepository
+    participant R as Redis
+
+    PS->>PS: 결제 SUCCESS 확정 + PaymentCompleteEvent(userId, orderId) 발행
+    Note over PS: TX_pay 커밋 후(AFTER_COMMIT)<br/>각 리스너가 독립 구독 — 코레오그래피
+
+    par 기존 사가 (변경 없음)
+        PS--)OPL: PaymentCompleteEvent
+        OPL->>OPL: 주문 PAID 전이, 쿠폰 확정
+    and 토큰 소비 (신규)
+        PS--)ECL: PaymentCompleteEvent
+        ECL->>SVC: consumeEntryToken(userId)
+        SVC->>ETR: delete(userId)
+        ETR->>R: DEL entry-token:{userId}
+        R-->>ETR: 1 (삭제) or 0 (이미 없음 — no-op)
+
+        alt Redis 오류 등 삭제 실패
+            ECL->>ECL: 로그만 남기고 삼킨다 (fire-and-forget)
+            Note over ECL: 재시도 없음 — TTL 5분이 최종 방어선<br/>결제 완료 흐름에 영향 없음
+        end
+    end
+```
+
+- **코레오그래피 방식**: 중앙 조율자 없이 `OrderPaymentEventListener`(주문·쿠폰)와 `EntryTokenConsumeEventListener`(대기열 토큰)가 같은 이벤트를 각자 구독해 독립적으로 반응한다. 두 리스너는 서로의 성공/실패에 영향을 주지 않는다.
+- `PaymentFailedEvent` 는 구독하지 않는다 — 결제 실패 시 토큰이 유지되어 TTL 내 재시도가 가능하다.
+- 결제 성공 후 5분 내 재주문은 토큰이 삭제된 상태이므로 다시 대기열에 진입해야 한다 (1회 입장권 = 1회 결제).
+- **수용한 경쟁 조건**: 토큰 삭제와 동시에 같은 유저가 그 토큰으로 새 주문 검증을 통과할 수 있는 밀리초 단위 창이 있으나, 실질적 피해가 없어 방어하지 않는다.
 
 ---
 
@@ -194,6 +231,12 @@ classDiagram
         +getPosition(userId) WaitingQueueInfo.Position
         +publishEntryTokens() void
         +validateEntryToken(userId, headerToken) void
+        +consumeEntryToken(userId) void
+    }
+
+    class EntryTokenConsumeEventListener {
+        -WaitingQueueApplicationService applicationService
+        +onPaymentSucceeded(event) void  AFTER_COMMIT + Async
     }
 
     class EntryTokenInterceptor {
@@ -249,6 +292,7 @@ classDiagram
         <<interface>>
         +find(userId) Optional~EntryTokenVO~
         +save(token) void
+        +delete(userId) void
     }
 
     class WaitingQueueRepositoryImpl {
@@ -262,12 +306,14 @@ classDiagram
         -RedisTemplate redisTemplate
         +find(userId) Optional~EntryTokenVO~  GET
         +save(token) void  SET EX 300
+        +delete(userId) void  DEL
     }
 
     WaitingQueueV1Controller --> WaitingQueueApplicationService
     WaitingQueueV1Controller ..> WaitingQueueV1Dto
     EntryTokenPublishScheduler --> WaitingQueueApplicationService
     EntryTokenInterceptor --> WaitingQueueApplicationService
+    EntryTokenConsumeEventListener --> WaitingQueueApplicationService
 
     WaitingQueueApplicationService ..> WaitingQueueInfo
     WaitingQueueApplicationService --> WaitingQueueRepository
@@ -288,7 +334,7 @@ classDiagram
 |--------|--------|------|
 | interfaces.api | `WaitingQueueV1Controller`, `WaitingQueueV1Dto` | 표현 계층 |
 | interfaces.auth | `EntryTokenInterceptor` | `POST /api/v1/orders` 게이트, `UserAuthInterceptor` 다음 순서 |
-| application | `WaitingQueueApplicationService`, `WaitingQueueInfo`, `EntryTokenPublishScheduler` | Repository 포트 조합(orchestration), `@Scheduled` |
+| application | `WaitingQueueApplicationService`, `WaitingQueueInfo`, `EntryTokenPublishScheduler`, `EntryTokenConsumeEventListener` | Repository 포트 조합(orchestration), `@Scheduled`, `PaymentCompleteEvent` 구독(AFTER_COMMIT + 비동기) |
 | domain (순수 Java) | `WaitingQueueEntryVO`, `EntryTokenVO`, `WaitingQueueRankCalculator`, `EstimatedWaitPolicy`, `EntryTokenValidatePolicy`, `WaitingQueueRepository`, `EntryTokenRepository` | Spring/Redis 무의존 |
 | infrastructure | `WaitingQueueRepositoryImpl`, `EntryTokenRepositoryImpl` | RedisTemplate 어댑터 |
 
