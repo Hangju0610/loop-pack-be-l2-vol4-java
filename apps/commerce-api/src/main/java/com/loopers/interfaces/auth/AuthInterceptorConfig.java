@@ -1,6 +1,7 @@
 package com.loopers.interfaces.auth;
 
 import com.loopers.application.user.UserApplicationService;
+import com.loopers.application.waitingqueue.WaitingQueueApplicationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
@@ -14,6 +15,7 @@ import java.util.List;
 public class AuthInterceptorConfig implements WebMvcConfigurer {
 
     private final UserApplicationService userApplicationService;
+    private final WaitingQueueApplicationService waitingQueueApplicationService;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -29,6 +31,9 @@ public class AuthInterceptorConfig implements WebMvcConfigurer {
 
         registry.addInterceptor(new OptionalUserAuthInterceptor(userApplicationService))
                 .addPathPatterns("/api/v1/products/*");
+
+        registry.addInterceptor(new EntryTokenInterceptor(waitingQueueApplicationService))
+                .addPathPatterns("/api/v1/orders");
 
         registry.addInterceptor(new AdminAuthInterceptor())
                 .addPathPatterns("/api-admin/v1/**");

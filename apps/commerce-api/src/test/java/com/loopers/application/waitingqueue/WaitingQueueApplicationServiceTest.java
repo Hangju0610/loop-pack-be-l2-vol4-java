@@ -114,4 +114,43 @@ class WaitingQueueApplicationServiceTest {
             assertThat(waitingQueueRepository.findRank("user-2")).isEmpty();
         }
     }
+
+    @Nested
+    @DisplayName("validateEntryToken")
+    class ValidateEntryToken {
+
+        @Test
+        @DisplayName("헤더 토큰이 저장된 토큰과 일치하면 예외 없이 통과한다")
+        void does_not_throw_when_header_token_matches_stored_token() {
+
+            EntryTokenVO token = EntryTokenVO.create("user-1");
+            entryTokenRepository.save(token);
+
+            org.assertj.core.api.Assertions.assertThatCode(
+                    () -> waitingQueueApplicationService.validateEntryToken("user-1", token.token())
+            ).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("저장된 토큰이 없으면 UNAUTHORIZED 예외가 발생한다")
+        void throws_unauthorized_when_stored_token_is_missing() {
+
+            assertThatThrownBy(() -> waitingQueueApplicationService.validateEntryToken("user-none", "any-token"))
+                    .isInstanceOf(CoreException.class)
+                    .hasFieldOrPropertyWithValue("errorType", ErrorType.UNAUTHORIZED)
+                    .hasMessageContaining("Entry-Token이 없습니다");
+        }
+
+        @Test
+        @DisplayName("헤더 토큰이 저장된 토큰과 다르면 UNAUTHORIZED 예외가 발생한다")
+        void throws_unauthorized_when_header_token_does_not_match() {
+
+            entryTokenRepository.save(EntryTokenVO.create("user-1"));
+
+            assertThatThrownBy(() -> waitingQueueApplicationService.validateEntryToken("user-1", "wrong-token"))
+                    .isInstanceOf(CoreException.class)
+                    .hasFieldOrPropertyWithValue("errorType", ErrorType.UNAUTHORIZED)
+                    .hasMessageContaining("Entry-Token이 일치하지 않습니다");
+        }
+    }
 }

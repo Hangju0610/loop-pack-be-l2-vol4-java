@@ -7,12 +7,14 @@ import com.loopers.domain.order.OrderSnapshot;
 import com.loopers.domain.order.OrderSnapshotItem;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.application.user.UserApplicationService;
+import com.loopers.application.waitingqueue.WaitingQueueApplicationService;
 import com.loopers.infrastructure.order.OrderJpaRepository;
 import com.loopers.infrastructure.order.OrderMapper;
 import com.loopers.domain.order.OrderEntity;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResult;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,6 +33,7 @@ class OrderV1ApiE2ETest {
     private static final String HEADER_LOGIN_ID = "X-Loopers-LoginId";
     private static final String HEADER_LOGIN_PW = "X-Loopers-LoginPw";
     private static final String HEADER_LDAP = "X-Loopers-Ldap";
+    private static final String HEADER_ENTRY_TOKEN = "X-Loopers-Entry-Token";
     private static final String ADMIN_LDAP_VALUE = "loopers.admin";
 
     private static final String DEFAULT_LOGIN_ID = "testuser1";
@@ -41,7 +44,9 @@ class OrderV1ApiE2ETest {
     private final ProductApplicationService productApplicationService;
     private final OrderJpaRepository orderJpaRepository;
     private final UserApplicationService userApplicationService;
+    private final WaitingQueueApplicationService waitingQueueApplicationService;
     private final DatabaseCleanUp databaseCleanUp;
+    private final RedisCleanUp redisCleanUp;
 
     @Autowired
     OrderV1ApiE2ETest(
@@ -50,19 +55,24 @@ class OrderV1ApiE2ETest {
             ProductApplicationService productApplicationService,
             OrderJpaRepository orderJpaRepository,
             UserApplicationService userApplicationService,
-            DatabaseCleanUp databaseCleanUp
+            WaitingQueueApplicationService waitingQueueApplicationService,
+            DatabaseCleanUp databaseCleanUp,
+            RedisCleanUp redisCleanUp
     ) {
         this.testRestTemplate = testRestTemplate;
         this.brandApplicationService = brandApplicationService;
         this.productApplicationService = productApplicationService;
         this.orderJpaRepository = orderJpaRepository;
         this.userApplicationService = userApplicationService;
+        this.waitingQueueApplicationService = waitingQueueApplicationService;
         this.databaseCleanUp = databaseCleanUp;
+        this.redisCleanUp = redisCleanUp;
     }
 
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        redisCleanUp.truncateAll();
     }
 
     private String createUser() {
@@ -89,6 +99,18 @@ class OrderV1ApiE2ETest {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HEADER_LOGIN_ID, DEFAULT_LOGIN_ID);
         headers.set(HEADER_LOGIN_PW, DEFAULT_PASSWORD);
+        return headers;
+    }
+
+    private String issueEntryToken(String userId) {
+        waitingQueueApplicationService.enter(userId);
+        waitingQueueApplicationService.publishEntryTokens();
+        return waitingQueueApplicationService.getPosition(userId).entryToken();
+    }
+
+    private HttpHeaders userHeadersWithEntryToken(String userId) {
+        HttpHeaders headers = userHeaders();
+        headers.set(HEADER_ENTRY_TOKEN, issueEntryToken(userId));
         return headers;
     }
 
@@ -125,7 +147,7 @@ class OrderV1ApiE2ETest {
         @DisplayName("유효한 요청이면 201 Created와 주문 ID를 반환한다.")
         @Test
         void returnsCreated_whenRequestIsValid() {
-            createUser();
+            String userId = createUser();
             ProductInfo product = createProduct(10);
 
             OrderV1Dto.CreateOrderRequest request = new OrderV1Dto.CreateOrderRequest(
@@ -136,7 +158,7 @@ class OrderV1ApiE2ETest {
                     new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<OrderV1Dto.CreateOrderResponse>> response = testRestTemplate.exchange(
                     "/api/v1/orders",
-                    HttpMethod.POST, new HttpEntity<>(request, userHeaders()), type
+                    HttpMethod.POST, new HttpEntity<>(request, userHeadersWithEntryToken(userId)), type
             );
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -146,14 +168,14 @@ class OrderV1ApiE2ETest {
         @DisplayName("items가 빈 배열이면 400을 반환한다.")
         @Test
         void returnsBadRequest_whenItemsIsEmpty() {
-            createUser();
+            String userId = createUser();
 
             OrderV1Dto.CreateOrderRequest request = new OrderV1Dto.CreateOrderRequest(List.of(), null);
 
             ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<Void>> response = testRestTemplate.exchange(
                     "/api/v1/orders",
-                    HttpMethod.POST, new HttpEntity<>(request, userHeaders()), type
+                    HttpMethod.POST, new HttpEntity<>(request, userHeadersWithEntryToken(userId)), type
             );
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -162,7 +184,7 @@ class OrderV1ApiE2ETest {
         @DisplayName("존재하지 않는 상품 ID를 포함하면 404를 반환한다.")
         @Test
         void returnsNotFound_whenProductNotExists() {
-            createUser();
+            String userId = createUser();
 
             OrderV1Dto.CreateOrderRequest request = new OrderV1Dto.CreateOrderRequest(
                     List.of(new OrderV1Dto.CreateOrderRequest.OrderItemRequest("999", 1)), null
@@ -171,7 +193,7 @@ class OrderV1ApiE2ETest {
             ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<Void>> response = testRestTemplate.exchange(
                     "/api/v1/orders",
-                    HttpMethod.POST, new HttpEntity<>(request, userHeaders()), type
+                    HttpMethod.POST, new HttpEntity<>(request, userHeadersWithEntryToken(userId)), type
             );
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -180,7 +202,7 @@ class OrderV1ApiE2ETest {
         @DisplayName("재고가 부족하면 400을 반환한다.")
         @Test
         void returnsBadRequest_whenInsufficientStock() {
-            createUser();
+            String userId = createUser();
             ProductInfo product = createProduct(1);
 
             OrderV1Dto.CreateOrderRequest request = new OrderV1Dto.CreateOrderRequest(
@@ -190,10 +212,81 @@ class OrderV1ApiE2ETest {
             ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<Void>> response = testRestTemplate.exchange(
                     "/api/v1/orders",
-                    HttpMethod.POST, new HttpEntity<>(request, userHeaders()), type
+                    HttpMethod.POST, new HttpEntity<>(request, userHeadersWithEntryToken(userId)), type
             );
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // POST /api/v1/orders — Entry-Token 게이트
+    // ─────────────────────────────────────────────
+
+    @DisplayName("POST /api/v1/orders — Entry-Token 게이트")
+    @Nested
+    class EntryTokenGate {
+
+        @DisplayName("Entry-Token 헤더가 없으면 401과 '없습니다' 메시지를 반환한다.")
+        @Test
+        void returnsUnauthorized_whenEntryTokenHeaderIsMissing() {
+            createUser();
+            ProductInfo product = createProduct(10);
+
+            OrderV1Dto.CreateOrderRequest request = new OrderV1Dto.CreateOrderRequest(
+                    List.of(new OrderV1Dto.CreateOrderRequest.OrderItemRequest(product.id(), 1)), null
+            );
+
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response = testRestTemplate.exchange(
+                    "/api/v1/orders",
+                    HttpMethod.POST, new HttpEntity<>(request, userHeaders()), type
+            );
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getBody().meta().message()).contains("Entry-Token이 없습니다");
+        }
+
+        @DisplayName("Entry-Token이 저장된 토큰과 일치하지 않으면 401과 '일치하지 않습니다' 메시지를 반환한다.")
+        @Test
+        void returnsUnauthorized_whenEntryTokenDoesNotMatch() {
+            String userId = createUser();
+            ProductInfo product = createProduct(10);
+            issueEntryToken(userId);
+
+            OrderV1Dto.CreateOrderRequest request = new OrderV1Dto.CreateOrderRequest(
+                    List.of(new OrderV1Dto.CreateOrderRequest.OrderItemRequest(product.id(), 1)), null
+            );
+
+            HttpHeaders headers = userHeaders();
+            headers.set(HEADER_ENTRY_TOKEN, "invalid-token");
+
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response = testRestTemplate.exchange(
+                    "/api/v1/orders",
+                    HttpMethod.POST, new HttpEntity<>(request, headers), type
+            );
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getBody().meta().message()).contains("Entry-Token이 일치하지 않습니다");
+        }
+
+        @DisplayName("GET /api/v1/orders 조회는 Entry-Token 헤더 없이도 통과한다.")
+        @Test
+        void doesNotGate_getOrders() {
+            String userId = createUser();
+            ProductInfo product = createProduct(10);
+            createOrderDirectly(userId, product, 1);
+
+            ParameterizedTypeReference<ApiResponse<PageResult<OrderV1Dto.OrderResponse>>> type =
+                    new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<PageResult<OrderV1Dto.OrderResponse>>> response =
+                    testRestTemplate.exchange(
+                            "/api/v1/orders?page=0&size=20",
+                            HttpMethod.GET, new HttpEntity<>(userHeaders()), type
+                    );
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         }
     }
 
