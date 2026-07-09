@@ -1,6 +1,7 @@
 # WaitingQueue 도메인 요구사항
 
 - 작성일: 2026-07-08
+- 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(5-6) 추가
 - 상태: 확정
 
 ---
@@ -21,8 +22,9 @@
 ### 유저
 1. `/queue/enter`를 호출해 대기열에 진입한다.
 2. `/queue/position`을 주기적으로 폴링하며 자신의 순번과 예상 대기 시간을 확인한다.
-3. 순번이 되면 응답으로 Entry-Token을 받는다. 이 토큰으로 보호 대상 API에 접근한다.
-4. 토큰은 1회 입장권 개념이다. 새 구매를 진행하려면 다시 대기열에 진입한다.
+3. 순번이 되면 응답으로 Entry-Token을 받는다. 이 토큰으로 보호 대상 API(주문 생성)에 접근한다.
+4. 주문 생성 시 `X-Loopers-Entry-Token` 헤더로 토큰을 제출하며, 서버는 Redis에 저장된 토큰과 일치하는지 검증한다.
+5. 토큰은 1회 입장권 개념이다. 새 구매를 진행하려면 다시 대기열에 진입한다.
 
 ---
 
@@ -33,6 +35,7 @@
 | US-01 | User | 대기열 진입 | 인증된 유저가 enter 호출 시 userId + timestamp 로 대기열에 등록된다 |
 | US-02 | User | 순번 확인 (폴링) | 대기 중이면 position + estimatedWaitSeconds, 발급 완료면 position 0 + 토큰을 받는다 |
 | US-03 | System | 토큰 발급 | 스케줄러가 100ms 마다 대기열 앞에서 20명을 꺼내 Entry-Token 을 발급한다 |
+| US-04 | System | 주문 시 토큰 검증 | 주문 생성 요청의 Entry-Token 헤더가 Redis 저장 토큰과 일치해야 주문 로직이 진행된다 |
 
 ---
 
@@ -59,6 +62,7 @@
 | TTL | **5분** |
 
 - 복잡한 검증 체계 없이 간결하게 유지한다. 토큰은 1회 입장권 개념이다.
+- **토큰 소비(삭제)는 현 범위에서 하지 않는다** — 결제 완료 후 이벤트로 처리할 예정(후속 작업). TTL 5분 내에는 재사용(주문 실패/재시도)이 가능하다.
 
 ---
 
@@ -108,7 +112,21 @@ estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올
 - 반환은 **초 단위 long, 올림** — 1초 미만 구간도 최소 1초로 응답한다. (API 필드명 `estimatedWaitSeconds` 유지)
 - `EstimatedWaitPolicy.calculate(position)` — 순수 Java 도메인 정책 클래스. `position` 은 1-base 대기 순번만 유효하며(0 = 토큰 발급 완료는 별도 분기에서 처리), `position <= 0` 입력은 `CoreException(BAD_REQUEST)` 로 가드한다.
 
-### 5-5. 클라이언트 폴링 가이드
+### 5-5. 주문 시 Entry-Token 검증 — `EntryTokenInterceptor`
+
+주문 생성 API 를 대기열 통과자만 접근하도록 게이트한다.
+
+| 항목 | 규칙 |
+|------|------|
+| 적용 범위 | **`POST /api/v1/orders` 만** — GET 조회(주문 목록/상세)는 게이트하지 않는다 (폴링 중에도 주문 내역 확인 가능해야 함) |
+| 방식 | `HandlerInterceptor` (`EntryTokenInterceptor`) — 기존 `UserAuthInterceptor` **다음** 순서로 실행. AOP 미사용 (코드베이스의 횡단 관심사 처리 관례가 인터셉터이며, 헤더/userId 접근이 자연스러움) |
+| 요청 헤더 | `X-Loopers-Entry-Token: {uuid}` |
+| 검증 | `WaitingQueueApplicationService.validateEntryToken(userId, headerToken)` — Redis `GET entry-token:{userId}` 결과와 헤더 토큰 비교. 판정 규칙은 도메인 정책 `EntryTokenValidatePolicy` 가 담당 |
+| 헤더 없음/저장 토큰 없음 | `401 UNAUTHORIZED` — "Entry-Token이 없습니다" |
+| 토큰 불일치 | `401 UNAUTHORIZED` — "Entry-Token이 일치하지 않습니다" |
+| 토큰 소비 | **하지 않음** — 결제 완료 이벤트에서 처리 예정 (후속 작업). TTL 내 재사용 허용 |
+
+### 5-6. 클라이언트 폴링 가이드
 
 | position 구간 | 폴링 간격 |
 |---------------|----------|
@@ -137,8 +155,11 @@ interfaces.api.waitingqueue
 ├── WaitingQueueV1Controller
 └── WaitingQueueV1Dto
 
+interfaces.auth
+└── EntryTokenInterceptor              # POST /api/v1/orders 게이트 (UserAuthInterceptor 다음 순서)
+
 application.waitingqueue
-├── WaitingQueueApplicationService     # Repository 포트 조합 (orchestration)
+├── WaitingQueueApplicationService     # Repository 포트 조합 (orchestration, validateEntryToken 포함)
 ├── WaitingQueueInfo                   # Application 계층 DTO
 └── EntryTokenPublishScheduler         # @Scheduled 토큰 발급
 
@@ -147,6 +168,7 @@ domain.waitingqueue                    # 순수 Java — Spring/Redis/Repository
 ├── EntryTokenVO                       # record. 정적 팩토리로 UUID 생성 규칙 캡슐화
 ├── WaitingQueueRankCalculator         # rank(0-base, nullable) → position(1-base) 변환, 미등록 시 NOT_FOUND
 ├── EstimatedWaitPolicy                # position → 예상 대기 초 계산
+├── EntryTokenValidatePolicy           # 헤더 토큰 vs 저장 토큰 판정 (없음/불일치 → UNAUTHORIZED)
 ├── WaitingQueueRepository             # 포트: add(ZADD GT) / findRank(ZRANK) / popMin(ZPOPMIN)
 └── EntryTokenRepository               # 포트: find(GET) / save(SET + TTL)
 
@@ -164,8 +186,9 @@ infrastructure.waitingqueue
 
 | 계층 | 대상 | 방식 |
 |------|------|------|
-| 도메인 단위 | `WaitingQueueRankCalculator`, `EstimatedWaitPolicy`, VO 정적 팩토리 | 순수 JUnit (컨테이너 불필요) |
+| 도메인 단위 | `WaitingQueueRankCalculator`, `EstimatedWaitPolicy`, `EntryTokenValidatePolicy`, VO 정적 팩토리 | 순수 JUnit (컨테이너 불필요) |
 | 통합 | `WaitingQueueRepositoryImpl`, `EntryTokenRepositoryImpl`, `WaitingQueueApplicationService` | `RedisTestContainersConfig` + `RedisCleanUp` — GT 갱신 동작, ZPOPMIN 발급, TTL 검증 |
 | E2E | enter → position 폴링 → 토큰 수령 | `@SpringBootTest` + TestRestTemplate |
+| E2E (주문 게이트) | 유효 토큰 → 주문 성공 / 헤더 없음·불일치 → 401 / GET 주문 조회는 토큰 불필요 | `@SpringBootTest` + TestRestTemplate (`OrderV1ApiE2ETest` 의 주문 생성 케이스는 토큰 발급 후 헤더 포함으로 갱신) |
 
 DB 를 사용하지 않으므로 `DatabaseCleanUp` 은 불필요하다.

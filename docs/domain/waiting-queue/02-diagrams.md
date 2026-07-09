@@ -1,6 +1,7 @@
 # WaitingQueue 도메인 다이어그램
 
 - 작성일: 2026-07-08
+- 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(1-4) 추가
 - 기준 문서: [01-requirements.md](01-requirements.md)
 
 ---
@@ -119,6 +120,51 @@ sequenceDiagram
     Note over SCH,R: 처리율 = 100ms × 20명 = 초당 200명<br/>⚠ 알려진 한계(수용): ZPOPMIN ~ SET 사이 앱 종료 시<br/>해당 유저 유실 — enter 재호출로 복구
 ```
 
+### 1-4. POST /api/v1/orders — 주문 시 Entry-Token 검증
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AI as UserAuthInterceptor
+    participant ETI as EntryTokenInterceptor
+    participant SVC as WaitingQueueApplicationService
+    participant ETR as EntryTokenRepository
+    participant POL as EntryTokenValidatePolicy
+    participant R as Redis
+    participant CTL as OrderV1Controller
+
+    C->>AI: POST /api/v1/orders<br/>(X-Loopers-LoginId / LoginPw<br/>+ X-Loopers-Entry-Token)
+    AI->>ETI: 인증 통과 (userId attribute 세팅)
+
+    Note over ETI: POST 만 게이트 — GET 은 통과
+    ETI->>SVC: validateEntryToken(userId, headerToken)
+
+    SVC->>ETR: find(userId)
+    ETR->>R: GET entry-token:{userId}
+    R-->>ETR: UUID or nil
+    ETR-->>SVC: Optional[EntryTokenVO]
+
+    SVC->>POL: validate(headerToken, storedToken)
+
+    alt 헤더 없음 or 저장 토큰 없음
+        POL-->>SVC: throw CoreException(UNAUTHORIZED,<br/>"Entry-Token이 없습니다")
+        SVC-->>ETI: CoreException 전파
+        ETI-->>C: 401 UNAUTHORIZED (ApiControllerAdvice)
+    else 토큰 불일치
+        POL-->>SVC: throw CoreException(UNAUTHORIZED,<br/>"Entry-Token이 일치하지 않습니다")
+        SVC-->>ETI: CoreException 전파
+        ETI-->>C: 401 UNAUTHORIZED (ApiControllerAdvice)
+    else 일치
+        POL-->>SVC: 통과
+        SVC-->>ETI: 통과
+        ETI->>CTL: 이후 Order 로직 진행
+        CTL-->>C: 201 CREATED { order }
+    end
+```
+
+- 토큰은 검증만 하고 **삭제하지 않는다** — 소비는 결제 완료 이벤트에서 처리 예정(후속 작업). TTL 5분 내 재사용(주문 실패/재시도) 허용.
+- 인터셉터 순서: `UserAuthInterceptor` → `EntryTokenInterceptor`. userId 는 앞선 인터셉터가 세팅한 request attribute 에서 가져온다.
+
 ---
 
 ## 2. 클래스 다이어그램
@@ -147,6 +193,16 @@ classDiagram
         +enter(userId) WaitingQueueInfo.Enter
         +getPosition(userId) WaitingQueueInfo.Position
         +publishEntryTokens() void
+        +validateEntryToken(userId, headerToken) void
+    }
+
+    class EntryTokenInterceptor {
+        -WaitingQueueApplicationService applicationService
+        +preHandle(request) boolean  POST /api/v1/orders 게이트
+    }
+
+    class EntryTokenValidatePolicy {
+        +validate(headerToken, storedToken) void
     }
 
     class WaitingQueueInfo {
@@ -211,12 +267,14 @@ classDiagram
     WaitingQueueV1Controller --> WaitingQueueApplicationService
     WaitingQueueV1Controller ..> WaitingQueueV1Dto
     EntryTokenPublishScheduler --> WaitingQueueApplicationService
+    EntryTokenInterceptor --> WaitingQueueApplicationService
 
     WaitingQueueApplicationService ..> WaitingQueueInfo
     WaitingQueueApplicationService --> WaitingQueueRepository
     WaitingQueueApplicationService --> EntryTokenRepository
     WaitingQueueApplicationService --> WaitingQueueRankCalculator
     WaitingQueueApplicationService --> EstimatedWaitPolicy
+    WaitingQueueApplicationService --> EntryTokenValidatePolicy
     WaitingQueueApplicationService ..> WaitingQueueEntryVO
     WaitingQueueApplicationService ..> EntryTokenVO
 
@@ -229,8 +287,9 @@ classDiagram
 | 레이어 | 클래스 | 비고 |
 |--------|--------|------|
 | interfaces.api | `WaitingQueueV1Controller`, `WaitingQueueV1Dto` | 표현 계층 |
+| interfaces.auth | `EntryTokenInterceptor` | `POST /api/v1/orders` 게이트, `UserAuthInterceptor` 다음 순서 |
 | application | `WaitingQueueApplicationService`, `WaitingQueueInfo`, `EntryTokenPublishScheduler` | Repository 포트 조합(orchestration), `@Scheduled` |
-| domain (순수 Java) | `WaitingQueueEntryVO`, `EntryTokenVO`, `WaitingQueueRankCalculator`, `EstimatedWaitPolicy`, `WaitingQueueRepository`, `EntryTokenRepository` | Spring/Redis 무의존 |
+| domain (순수 Java) | `WaitingQueueEntryVO`, `EntryTokenVO`, `WaitingQueueRankCalculator`, `EstimatedWaitPolicy`, `EntryTokenValidatePolicy`, `WaitingQueueRepository`, `EntryTokenRepository` | Spring/Redis 무의존 |
 | infrastructure | `WaitingQueueRepositoryImpl`, `EntryTokenRepositoryImpl` | RedisTemplate 어댑터 |
 
 - 의존성 방향: interfaces → application → domain ← infrastructure (DIP — 구현체가 도메인 포트를 구현)
