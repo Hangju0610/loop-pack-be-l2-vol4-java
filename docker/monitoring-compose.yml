@@ -22,6 +22,17 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
 
+  # 부하 테스트 시에만 기동 (--profile loadtest). k6/run-waiting-queue.sh 가 수명을 관리한다.
+  redis-exporter:
+    image: oliver006/redis_exporter
+    profiles: ["loadtest"]
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://host.docker.internal:6379
+      - REDIS_EXPORTER_CHECK_SINGLE_KEYS=waiting-queue      # ZCARD → redis_key_size
+      - REDIS_EXPORTER_COUNT_KEYS=entry-token:*             # SCAN 카운트 → redis_keys_count
+
 networks:
   default:
     driver: bridge
