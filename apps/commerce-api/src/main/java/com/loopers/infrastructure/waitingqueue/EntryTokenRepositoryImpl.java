@@ -33,4 +33,9 @@ public class EntryTokenRepositoryImpl implements EntryTokenRepository {
     public void save(EntryTokenVO token) {
         redisTemplate.opsForValue().set(KEY_PREFIX + token.userId(), token.token(), TTL);
     }
+
+    @Override
+    public void delete(String userId) {
+        redisTemplate.delete(KEY_PREFIX + userId);
+    }
 }

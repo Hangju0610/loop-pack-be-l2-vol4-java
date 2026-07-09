@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 @SpringBootTest
 @DisplayName("EntryTokenRepositoryImpl 통합 테스트")
@@ -67,6 +68,30 @@ class EntryTokenRepositoryImplTest {
             Long ttlSeconds = redisTemplate.getExpire("entry-token:user-1", TimeUnit.SECONDS);
 
             assertThat(ttlSeconds).isGreaterThan(0L).isLessThanOrEqualTo(300L);
+        }
+    }
+
+    @Nested
+    @DisplayName("delete")
+    class Delete {
+
+        @Test
+        @DisplayName("저장된 토큰을 삭제하면 더 이상 조회되지 않는다")
+        void deletes_saved_token() {
+
+            entryTokenRepository.save(EntryTokenVO.create("user-1"));
+
+            entryTokenRepository.delete("user-1");
+
+            assertThat(entryTokenRepository.find("user-1")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 토큰 삭제는 예외 없이 no-op으로 처리된다")
+        void deleting_nonexistent_token_is_noop() {
+
+            assertThatCode(() -> entryTokenRepository.delete("user-none"))
+                    .doesNotThrowAnyException();
         }
     }
 }

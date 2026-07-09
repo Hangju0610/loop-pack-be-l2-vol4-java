@@ -57,4 +57,8 @@ public class WaitingQueueApplicationService {
                 .orElse(null);
         entryTokenValidatePolicy.validate(headerToken, storedToken);
     }
+
+    public void consumeEntryToken(String userId) {
+        entryTokenRepository.delete(userId);
+    }
 }
