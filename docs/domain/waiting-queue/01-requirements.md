@@ -3,6 +3,7 @@
 - 작성일: 2026-07-08
 - 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(5-5) 추가
 - 수정일: 2026-07-10 — 결제 완료 시 Entry-Token 소비(5-6) 추가
+- 수정일: 2026-07-10 — enter 응답에 전체 대기 인원(waitingCount) 추가 (5-1)
 - 상태: 확정
 
 ---
@@ -34,7 +35,7 @@
 
 | # | Actor | 기능 | 인수 조건 |
 |---|-------|------|----------|
-| US-01 | User | 대기열 진입 | 인증된 유저가 enter 호출 시 userId + timestamp 로 대기열에 등록된다 |
+| US-01 | User | 대기열 진입 | 인증된 유저가 enter 호출 시 userId + timestamp 로 대기열에 등록되고, 전체 대기 인원(waitingCount)을 함께 받는다 |
 | US-02 | User | 순번 확인 (폴링) | 대기 중이면 position + estimatedWaitSeconds, 발급 완료면 position 0 + 토큰을 받는다 |
 | US-03 | System | 토큰 발급 | 스케줄러가 100ms 마다 대기열 앞에서 20명을 꺼내 Entry-Token 을 발급한다 |
 | US-04 | System | 주문 시 토큰 검증 | 주문 생성 요청의 Entry-Token 헤더가 Redis 저장 토큰과 일치해야 주문 로직이 진행된다 |
@@ -79,7 +80,8 @@
 | Request Body | 없음 |
 | 등록 | 토큰 보유 여부와 무관하게 **무조건 ZADD(GT)** — 토큰 보유자도 새 구매를 위해서는 다시 줄을 선다 (공정성) |
 | 재호출 | GT 에 의해 새 timestamp 로 갱신 → 맨 뒤로 이동. ZADD 반환값이 0(기존 멤버)이어도 score 는 갱신되므로 **실패가 아니다** |
-| 응답 | 신규/재등록 구분 없이 `{ userId, timestamp }` 반환 |
+| 응답 | 신규/재등록 구분 없이 `{ userId, timestamp, waitingCount }` 반환 |
+| waitingCount | `ZCARD waiting-queue` — **현재 대기열에 남아 있는 전체 인원** (토큰 발급으로 빠진 유저 제외). ZADD~ZCARD 사이 스케줄러 ZPOPMIN 이 개입할 수 있어 강한 일관성이 아닌 **조회 시점 스냅샷** — 진입 직후 안내용 UX 값으로 충분. 폴링 값은 기존대로 `/queue/position` 이 담당 |
 
 ### 5-2. 순번 확인 — `GET /api/v1/queue/position`
 
@@ -190,7 +192,7 @@ domain.waitingqueue                    # 순수 Java — Spring/Redis/Repository
 ├── WaitingQueueRankCalculator         # rank(0-base, nullable) → position(1-base) 변환, 미등록 시 NOT_FOUND
 ├── EstimatedWaitPolicy                # position → 예상 대기 초 계산
 ├── EntryTokenValidatePolicy           # 헤더 토큰 vs 저장 토큰 판정 (없음/불일치 → UNAUTHORIZED)
-├── WaitingQueueRepository             # 포트: add(ZADD GT) / findRank(ZRANK) / popMin(ZPOPMIN)
+├── WaitingQueueRepository             # 포트: add(ZADD GT) / findRank(ZRANK) / popMin(ZPOPMIN) / count(ZCARD)
 └── EntryTokenRepository               # 포트: find(GET) / save(SET + TTL) / delete(DEL)
 
 infrastructure.waitingqueue

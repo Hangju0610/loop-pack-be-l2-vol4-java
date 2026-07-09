@@ -3,6 +3,7 @@
 - 작성일: 2026-07-08
 - 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(1-4) 추가
 - 수정일: 2026-07-10 — 결제 완료 시 Entry-Token 소비(1-5) 추가
+- 수정일: 2026-07-10 — enter 응답에 전체 대기 인원(waitingCount) 추가 (1-1)
 - 기준 문서: [01-requirements.md](01-requirements.md)
 
 ---
@@ -35,12 +36,18 @@ sequenceDiagram
     R-->>WQR: 0 or 1 (반환값 무관 — 실패 아님)
     WQR-->>SVC: done
 
-    SVC-->>CTL: WaitingQueueInfo.Enter {userId, timestamp}
-    CTL-->>C: 200 OK { userId, timestamp }
+    SVC->>WQR: count()
+    WQR->>R: ZCARD waiting-queue
+    R-->>WQR: 전체 대기 인원
+    WQR-->>SVC: waitingCount
+
+    SVC-->>CTL: WaitingQueueInfo.Enter {userId, timestamp, waitingCount}
+    CTL-->>C: 200 OK { userId, timestamp, waitingCount }
 ```
 
 - 토큰 보유 여부를 확인하지 않고 **무조건 ZADD(GT)** 한다. (공정성 — 토큰 보유자도 새 구매는 다시 줄을 선다)
 - ZADD 반환값 0(기존 멤버)이어도 score 는 갱신되므로 실패로 취급하지 않는다.
+- `waitingCount` 는 ZADD 직후의 **스냅샷** — ZADD~ZCARD 사이 스케줄러 ZPOPMIN 이 개입할 수 있으나 진입 직후 안내용 UX 값으로 충분하다.
 
 ### 1-2. GET /api/v1/queue/position — 순번 확인 (폴링)
 
@@ -218,7 +225,7 @@ classDiagram
 
     class WaitingQueueV1Dto {
         <<record>>
-        EnterResponse(userId, timestamp)
+        EnterResponse(userId, timestamp, waitingCount)
         PositionResponse(position, estimatedWaitSeconds, entryToken)
     }
 
@@ -250,7 +257,7 @@ classDiagram
 
     class WaitingQueueInfo {
         <<record>>
-        Enter(userId, timestamp)
+        Enter(userId, timestamp, waitingCount)
         Position(position, estimatedWaitSeconds, entryToken)
     }
 
@@ -286,6 +293,7 @@ classDiagram
         +add(entry) void
         +findRank(userId) Optional~Long~
         +popMin(count) List~String~
+        +count() long
     }
 
     class EntryTokenRepository {
@@ -300,6 +308,7 @@ classDiagram
         +add(entry) void  ZADD GT
         +findRank(userId) Optional~Long~  ZRANK
         +popMin(count) List~String~  ZPOPMIN
+        +count() long  ZCARD
     }
 
     class EntryTokenRepositoryImpl {
