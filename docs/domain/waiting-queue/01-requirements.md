@@ -4,6 +4,7 @@
 - 수정일: 2026-07-09 — 주문 시 Entry-Token 검증(5-5) 추가
 - 수정일: 2026-07-10 — 결제 완료 시 Entry-Token 소비(5-6) 추가
 - 수정일: 2026-07-10 — enter 응답에 전체 대기 인원(waitingCount) 추가 (5-1)
+- 수정일: 2026-07-10 — 대기열 경로 무인증 전환: BCrypt 제거, userId 쿼리 파라미터 방식 (5-1, 5-2)
 - 상태: 확정
 
 ---
@@ -35,7 +36,7 @@
 
 | # | Actor | 기능 | 인수 조건 |
 |---|-------|------|----------|
-| US-01 | User | 대기열 진입 | 인증된 유저가 enter 호출 시 userId + timestamp 로 대기열에 등록되고, 전체 대기 인원(waitingCount)을 함께 받는다 |
+| US-01 | User | 대기열 진입 | 유저가 userId 로 enter 호출 시 userId + timestamp 로 대기열에 등록되고, 전체 대기 인원(waitingCount)을 함께 받는다 |
 | US-02 | User | 순번 확인 (폴링) | 대기 중이면 position + estimatedWaitSeconds, 발급 완료면 position 0 + 토큰을 받는다 |
 | US-03 | System | 토큰 발급 | 스케줄러가 100ms 마다 대기열 앞에서 20명을 꺼내 Entry-Token 을 발급한다 |
 | US-04 | System | 주문 시 토큰 검증 | 주문 생성 요청의 Entry-Token 헤더가 Redis 저장 토큰과 일치해야 주문 로직이 진행된다 |
@@ -76,16 +77,28 @@
 
 | 항목 | 규칙 |
 |------|------|
-| 인증 | `X-Loopers-LoginId` / `X-Loopers-LoginPw` 헤더, AuthInterceptor 통과 필요 |
-| Request Body | 없음 |
+| 인증 | **없음** — `userId` 쿼리 파라미터로 요청 주체를 식별 (5-1-1 참고). userId 는 회원가입 응답으로 노출되는 내부 식별자(`USR_...`) |
+| Request | `POST /api/v1/queue/enter?userId={userId}`, Body 없음. userId 누락 시 400 |
 | 등록 | 토큰 보유 여부와 무관하게 **무조건 ZADD(GT)** — 토큰 보유자도 새 구매를 위해서는 다시 줄을 선다 (공정성) |
 | 재호출 | GT 에 의해 새 timestamp 로 갱신 → 맨 뒤로 이동. ZADD 반환값이 0(기존 멤버)이어도 score 는 갱신되므로 **실패가 아니다** |
 | 응답 | 신규/재등록 구분 없이 `{ userId, timestamp, waitingCount }` 반환 |
 | waitingCount | `ZCARD waiting-queue` — **현재 대기열에 남아 있는 전체 인원** (토큰 발급으로 빠진 유저 제외). ZADD~ZCARD 사이 스케줄러 ZPOPMIN 이 개입할 수 있어 강한 일관성이 아닌 **조회 시점 스냅샷** — 진입 직후 안내용 UX 값으로 충분. 폴링 값은 기존대로 `/queue/position` 이 담당 |
 
+#### 5-1-1. 대기열 경로 무인증 결정 (알려진 트레이드오프)
+
+성능 테스트(03-performance-test.md 2차 실행)에서 **요청당 BCrypt 인증이 시스템 전체 처리량을 초당 ~46건으로 캡핑**해, 대기열이 부하를 받기도 전에 인증 계층에서 75.5%가 탈락하는 것이 확인됐다. 대기열의 존재 이유(다운스트림 보호)를 복원하기 위해 enter/position 경로에서 `UserAuthInterceptor` 를 제외하고 `userId` 쿼리 파라미터로 요청 주체를 식별한다.
+
+**수용한 리스크** (본 프로젝트는 대기열 성능 검증이 핵심 목적):
+1. **신원 사칭 + GT 그리핑**: 누구든 타인의 userId 로 enter 를 호출해 GT 갱신으로 그 유저를 맨 뒤로 밀 수 있다.
+2. **entryToken 노출**: 타인의 userId 로 position 을 조회해 토큰을 읽을 수 있다. 단, 주문은 여전히 BCrypt 인증 + 토큰 둘 다 필요하므로 토큰만으로는 행동할 수 없다.
+
+**대안 (미채택)**: enter 1회 인증 후 HMAC 서명 queueToken 발급 → 폴링에 사용. 보안을 유지하면서 검증 비용을 µs 로 낮출 수 있으나, 현 목적 대비 오버엔지니어링으로 판단해 백로그로 남긴다.
+
+**연관 변경**: 회원가입 응답(`UserV1Dto.UserResponse`)에 내부 식별자 `id` 를 노출한다. 대기열 userId 는 내부 id 여야 하는데(Entry-Token 키를 주문 검증·결제 완료 리스너가 내부 id 로 조회), 기존 응답에는 loginId 만 있어 클라이언트가 내부 id 를 알 방법이 없었다.
+
 ### 5-2. 순번 확인 — `GET /api/v1/queue/position`
 
-폴링용 조회 API. (조회이므로 POST 가 아닌 **GET**)
+폴링용 조회 API. (조회이므로 POST 가 아닌 **GET**) 인증 없음 — `?userId={userId}` 쿼리 파라미터 사용 (5-1-1).
 
 | 상태 | 판정 | 응답 |
 |------|------|------|

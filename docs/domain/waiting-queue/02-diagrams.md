@@ -15,15 +15,14 @@
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant AI as AuthInterceptor
     participant CTL as WaitingQueueV1Controller
     participant SVC as WaitingQueueApplicationService
     participant VO as WaitingQueueEntryVO
     participant WQR as WaitingQueueRepository
     participant R as Redis
 
-    C->>AI: POST /api/v1/queue/enter<br/>(X-Loopers-LoginId / LoginPw)
-    AI->>CTL: 인증 통과 (userId)
+    C->>CTL: POST /api/v1/queue/enter?userId={userId}
+    Note over CTL: 인증 없음 — BCrypt 병목 제거<br/>(요구사항 5-1-1, 트레이드오프 수용)
     CTL->>SVC: enter(userId)
 
     SVC->>VO: WaitingQueueEntryVO.create(userId)
@@ -54,7 +53,6 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant AI as AuthInterceptor
     participant CTL as WaitingQueueV1Controller
     participant SVC as WaitingQueueApplicationService
     participant ETR as EntryTokenRepository
@@ -63,8 +61,8 @@ sequenceDiagram
     participant EWP as EstimatedWaitPolicy
     participant R as Redis
 
-    C->>AI: GET /api/v1/queue/position<br/>(X-Loopers-LoginId / LoginPw)
-    AI->>CTL: 인증 통과 (userId)
+    C->>CTL: GET /api/v1/queue/position?userId={userId}
+    Note over CTL: 인증 없음 (요구사항 5-1-1)
     CTL->>SVC: getPosition(userId)
 
     Note over SVC: ① 토큰 확인 먼저
@@ -222,6 +220,7 @@ classDiagram
         +enter(userId) ApiResponse~EnterResponse~
         +getPosition(userId) ApiResponse~PositionResponse~
     }
+    note for WaitingQueueV1Controller "인증 없음 — userId 쿼리 파라미터 (요구사항 5-1-1)"
 
     class WaitingQueueV1Dto {
         <<record>>
