@@ -11,9 +11,18 @@ cd "$(dirname "$0")/.."
 
 COMPOSE=(docker compose -f docker/monitoring-compose.yml)
 
+# 테스트 종료 후에도 Entry-Token TTL(5분) 동안 exporter 를 유지해
+# 토큰 소멸(결제 소비 + TTL 만료) 곡선까지 Grafana 에 담는다.
+LINGER_SECONDS="${LINGER_SECONDS:-300}"
+
 "${COMPOSE[@]}" --profile loadtest up -d redis-exporter
-cleanup() { "${COMPOSE[@]}" --profile loadtest stop redis-exporter; }
+cleanup() {
+  echo "[run-waiting-queue] 토큰 TTL 관측을 위해 redis-exporter 를 ${LINGER_SECONDS}s 더 유지합니다 (Ctrl+C 로 즉시 종료)"
+  sleep "$LINGER_SECONDS" || true
+  "${COMPOSE[@]}" --profile loadtest stop redis-exporter
+}
 trap cleanup EXIT
+trap '"${COMPOSE[@]}" --profile loadtest stop redis-exporter; trap - EXIT; exit 130' INT
 
 K6_PROMETHEUS_RW_SERVER_URL="${K6_PROMETHEUS_RW_SERVER_URL:-http://localhost:9090/api/v1/write}" \
 K6_PROMETHEUS_RW_TREND_STATS='p(90),p(95),p(99),avg' \
