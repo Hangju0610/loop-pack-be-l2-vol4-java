@@ -14,7 +14,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,9 +24,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class WaitingQueueV1ApiE2ETest {
-
-    private static final String HEADER_LOGIN_ID = "X-Loopers-LoginId";
-    private static final String HEADER_LOGIN_PW = "X-Loopers-LoginPw";
 
     private static final String DEFAULT_LOGIN_ID = "queueuser1";
     private static final String DEFAULT_PASSWORD = "Test1234!";
@@ -67,18 +63,11 @@ class WaitingQueueV1ApiE2ETest {
                 LocalDate.of(1995, 1, 1), "queue@test.com").id();
     }
 
-    private HttpHeaders userHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HEADER_LOGIN_ID, DEFAULT_LOGIN_ID);
-        headers.set(HEADER_LOGIN_PW, DEFAULT_PASSWORD);
-        return headers;
-    }
-
     @DisplayName("POST /api/v1/queue/enter")
     @Nested
     class Enter {
 
-        @DisplayName("인증된 유저가 대기열에 진입하면 200과 userId, timestamp, waitingCount를 반환한다.")
+        @DisplayName("userId 쿼리 파라미터로 진입하면 인증 없이 200과 userId, timestamp, waitingCount를 반환한다.")
         @Test
         void returnsOk_withUserIdAndTimestampAndWaitingCount_whenUserEnters() {
             // arrange
@@ -89,7 +78,7 @@ class WaitingQueueV1ApiE2ETest {
                     new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<WaitingQueueV1Dto.EnterResponse>> response =
                     testRestTemplate.exchange(
-                            ENDPOINT_ENTER, HttpMethod.POST, new HttpEntity<>(userHeaders()), type
+                            ENDPOINT_ENTER + "?userId=" + userId, HttpMethod.POST, HttpEntity.EMPTY, type
                     );
 
             // assert
@@ -99,9 +88,9 @@ class WaitingQueueV1ApiE2ETest {
             assertThat(response.getBody().data().waitingCount()).isEqualTo(1L);
         }
 
-        @DisplayName("인증 헤더 없이 요청하면 401을 반환한다.")
+        @DisplayName("userId 파라미터 없이 요청하면 400을 반환한다.")
         @Test
-        void returnsUnauthorized_whenAuthHeaderIsMissing() {
+        void returnsBadRequest_whenUserIdParamIsMissing() {
             // act
             ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<Void>> response =
@@ -110,7 +99,7 @@ class WaitingQueueV1ApiE2ETest {
                     );
 
             // assert
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         }
     }
 
@@ -130,7 +119,7 @@ class WaitingQueueV1ApiE2ETest {
                     new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<WaitingQueueV1Dto.PositionResponse>> response =
                     testRestTemplate.exchange(
-                            ENDPOINT_POSITION, HttpMethod.GET, new HttpEntity<>(userHeaders()), type
+                            ENDPOINT_POSITION + "?userId=" + userId, HttpMethod.GET, HttpEntity.EMPTY, type
                     );
 
             // assert
@@ -153,7 +142,7 @@ class WaitingQueueV1ApiE2ETest {
                     new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<WaitingQueueV1Dto.PositionResponse>> response =
                     testRestTemplate.exchange(
-                            ENDPOINT_POSITION, HttpMethod.GET, new HttpEntity<>(userHeaders()), type
+                            ENDPOINT_POSITION + "?userId=" + userId, HttpMethod.GET, HttpEntity.EMPTY, type
                     );
 
             // assert
@@ -167,22 +156,22 @@ class WaitingQueueV1ApiE2ETest {
         @Test
         void returnsNotFound_whenUserIsNotRegistered() {
             // arrange
-            createUser();
+            String userId = createUser();
 
             // act
             ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<Void>> response =
                     testRestTemplate.exchange(
-                            ENDPOINT_POSITION, HttpMethod.GET, new HttpEntity<>(userHeaders()), type
+                            ENDPOINT_POSITION + "?userId=" + userId, HttpMethod.GET, HttpEntity.EMPTY, type
                     );
 
             // assert
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         }
 
-        @DisplayName("인증 헤더 없이 요청하면 401을 반환한다.")
+        @DisplayName("userId 파라미터 없이 요청하면 400을 반환한다.")
         @Test
-        void returnsUnauthorized_whenAuthHeaderIsMissing() {
+        void returnsBadRequest_whenUserIdParamIsMissing() {
             // act
             ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
             ResponseEntity<ApiResponse<Void>> response =
@@ -191,7 +180,7 @@ class WaitingQueueV1ApiE2ETest {
                     );
 
             // assert
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         }
     }
 }
