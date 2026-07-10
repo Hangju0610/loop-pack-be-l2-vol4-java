@@ -20,6 +20,7 @@ public class UserV1Dto {
     ) {}
 
     public record UserResponse(
+        String id,
         String userId,
         String name,
         LocalDate birthDate,
@@ -27,6 +28,7 @@ public class UserV1Dto {
     ) {
         public static UserResponse from(UserInfo info) {
             return new UserResponse(
+                info.id(),
                 info.userId(),
                 info.name(),
                 info.birthDate(),
