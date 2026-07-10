@@ -36,13 +36,14 @@ const PRODUCTS = Number(__ENV.PRODUCTS || 100);
 const RATE = Number(__ENV.RATE || 300);               // saturation: 초당 진입 수
 const RAMP_S = Number(__ENV.RAMP || 30);              // spike: 진입 분산 시간(초). 0 = 동시 진입
 const QUEUE_TIMEOUT = __ENV.QUEUE_TIMEOUT || '30s';   // enter/position 요청 타임아웃
-const MAX_WAIT_S = Number(__ENV.MAX_WAIT || 300);     // 토큰 발급 대기 한도(초)
+const MAX_WAIT_S = Number(__ENV.MAX_WAIT || 900);     // 토큰 발급 대기 한도(초) — 발급 20/s 기준 10,000명 소진 ~500s
 const CONSUME_WAIT_S = Number(__ENV.CONSUME_WAIT || 20); // 결제 후 토큰 삭제 판정 한도(초)
 const RUN = __ENV.RUN_ID || `wq${Date.now()}`;
 
 // 대기열 지표
 const waitingCount = new Trend('queue_waiting_count');       // enter 응답의 대기 인원 스냅샷
 const queueWaitTime = new Trend('queue_wait_time', true);    // 진입 → 토큰 발급까지(ms)
+const journeyTime = new Trend('journey_time', true);         // 진입 → 결제 완료(토큰 소비 확인)까지(ms)
 const flowResult = new Counter('flow_result');               // 단계별 최종 결과 분포
 const tokenReuse = new Counter('token_reuse');               // 결제 실패 후 동일 토큰 재사용 결과
 
@@ -79,17 +80,19 @@ const scenarios = SCENARIO === 'saturation'
         executor: 'per-vu-iterations',
         vus: USERS,
         iterations: 1,
-        maxDuration: __ENV.MAX_DURATION || '15m',
+        maxDuration: __ENV.MAX_DURATION || '25m',
       },
     };
 
 export const options = {
   scenarios,
   setupTimeout: '30m', // 유저 10,000명 가입은 서버 BCrypt 해싱 때문에 수 분 소요
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   thresholds: {
     'http_req_duration{name:enter}': ['p(95)<1000'],
     'http_req_duration{name:position}': ['p(95)<1000'],
     queue_wait_time: ['p(95)>=0'],
+    journey_time: ['p(90)>=0', 'p(95)>=0'],
     ...flowSubThresholds(),
     ...paySubThresholds(),
   },
@@ -110,13 +113,14 @@ export default function (data) {
     sleep((idx % data.users.length) / data.users.length * RAMP_S);
   }
 
+  const journeyStartedAt = Date.now();
   const token = enterAndWaitForToken(user);
   if (!token) return;
 
-  runOrderPaymentFlow(user, data.productIds, token);
+  runOrderPaymentFlow(user, data.productIds, token, journeyStartedAt);
 }
 
-/** enter 후 폴링 정책(>5000: 3s, 1000~5000: 2s, <1000: 1s)에 따라 토큰 발급까지 대기. */
+/** enter 후 폴링 정책(>5000: 5s, 1000~5000: 3s, <1000: 1s — ADR-041)에 따라 토큰 발급까지 대기. */
 function enterAndWaitForToken(user) {
   // 대기열 경로는 무인증 — userId 쿼리 파라미터로 식별 (요구사항 5-1-1)
   let res = http.post(`${BASE}/api/v1/queue/enter?userId=${user.id}`, null,
@@ -141,7 +145,7 @@ function enterAndWaitForToken(user) {
       return token;
     }
     const position = res.json('data.position');
-    sleep(position > 5000 ? 3 : position > 1000 ? 2 : 1);
+    sleep(position > 5000 ? 5 : position > 1000 ? 3 : 1);
   }
   flowResult.add(1, { status: 'WAIT_TIMEOUT' });
   return null;
@@ -151,13 +155,14 @@ function enterAndWaitForToken(user) {
  * 주문-결제 후 토큰 삭제(=결제 성공)를 확인한다.
  * 토큰이 남아 있으면(즉시 FAILED 또는 콜백 실패) 동일 토큰으로 1회 재주문한다. (S3)
  */
-function runOrderPaymentFlow(user, productIds, token) {
+function runOrderPaymentFlow(user, productIds, token, journeyStartedAt) {
   let attempt = attemptOrderAndPay(user, productIds, token);
   if (attempt.outcome !== 'PAID') {
     flowResult.add(1, { status: attempt.outcome });
     return;
   }
   if (waitTokenConsumed(user)) {
+    journeyTime.add(Date.now() - journeyStartedAt);
     flowResult.add(1, { status: 'TOKEN_CONSUMED' });
     return;
   }
@@ -169,9 +174,12 @@ function runOrderPaymentFlow(user, productIds, token) {
     flowResult.add(1, { status: attempt.outcome });
     return;
   }
-  flowResult.add(1, {
-    status: waitTokenConsumed(user) ? 'TOKEN_CONSUMED_ON_RETRY' : 'TOKEN_NOT_CONSUMED',
-  });
+  if (waitTokenConsumed(user)) {
+    journeyTime.add(Date.now() - journeyStartedAt);
+    flowResult.add(1, { status: 'TOKEN_CONSUMED_ON_RETRY' });
+    return;
+  }
+  flowResult.add(1, { status: 'TOKEN_NOT_CONSUMED' });
 }
 
 /** Entry-Token 으로 주문 1건(상품 1개, 수량 1) 생성 후 결제 요청. */

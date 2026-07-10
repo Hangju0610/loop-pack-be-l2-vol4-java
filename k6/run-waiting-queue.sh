@@ -16,5 +16,5 @@ cleanup() { "${COMPOSE[@]}" --profile loadtest stop redis-exporter; }
 trap cleanup EXIT
 
 K6_PROMETHEUS_RW_SERVER_URL="${K6_PROMETHEUS_RW_SERVER_URL:-http://localhost:9090/api/v1/write}" \
-K6_PROMETHEUS_RW_TREND_STATS='p(95),p(99),avg' \
+K6_PROMETHEUS_RW_TREND_STATS='p(90),p(95),p(99),avg' \
 k6 run -o experimental-prometheus-rw k6/waiting-queue-load.js "$@"

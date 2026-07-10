@@ -18,7 +18,7 @@
 | 유저 | 10,000명 | setup 단계에서 admin/일반 API로 생성 (`http.batch` 병렬 시드) |
 | 상품 | 100개 | 브랜드 1개 (브랜드는 무관) |
 | 재고 | 상품당 100,000,000 | 10,000명 전원 구매해도 충분 |
-| 토큰 발급 | 100ms당 20명 (초당 200명) | `EntryTokenPublishScheduler` |
+| 토큰 발급 | 100ms당 2명 (초당 20명) — 3차까지는 20명/100ms, 4차부터 ADR-041 적용 | `EntryTokenPublishScheduler` |
 | Entry-Token TTL | 5분 | Redis String |
 | PG 시뮬레이터 | 요청 40% 실패, 1~5초 후 콜백 | 결제 실패 경로가 자연 발생 |
 
@@ -36,9 +36,11 @@
 
   | 남은 순번 | 폴링 간격 |
   | ---- | ---- |
-  | 5,000 초과 | 3초 |
-  | 1,000 ~ 5,000 | 2초 |
+  | 5,000 초과 | 5초 |
+  | 1,000 ~ 5,000 | 3초 |
   | 1,000 미만 | 1초 |
+
+  (3차까지는 3/2/1초 — 발급 TPS 축소에 맞춰 4차부터 완화, ADR-041)
 
 - 초당 200명 발급이면 대기열 소진에 약 50초가 걸리고, 그동안 폴링이 **초당 수천 회** 지속된다. 이 지속 폴링이 1회성 진입 스파이크보다 큰 실부하다.
 - 토큰을 받은 유저는 곧바로 주문-결제 흐름(S3 포함)으로 진입한다.
@@ -65,7 +67,8 @@ PG 시뮬레이터가 요청의 40%를 실패시키므로, 결제 실패 → 토
 | ---- | ---- | ---- |
 | `http_req_duration{name:enter}` | 대기열 진입 응답 시간 | p95 < 1s |
 | `http_req_duration{name:position}` | 폴링 응답 시간 | p95 < 1s |
-| `queue_wait_time` | 진입 → 토큰 발급까지 대기 시간 | 이론값(순번/200명) 대비 크게 벗어나지 않는가 |
+| `queue_wait_time` | 진입 → 토큰 발급까지 대기 시간 (P90/P95 포함) | 이론값(순번/발급 TPS) 대비 크게 벗어나지 않는가 |
+| `journey_time` | 진입 → 결제 완료(토큰 소비 확인)까지 전체 여정 (P90/P95 포함) | 완주 유저의 종단 경험 시간 |
 | `queue_waiting_count` | enter 응답의 waitingCount 추이 | 대기열 깊이 관찰 (스냅샷) |
 | `flow_result` | 단계별 결과 분포 (TOKEN_CONSUMED / WAIT_TIMEOUT / ORDER_REJECTED_401 등) | TOKEN_CONSUMED 비율이 결제 성공률과 일치하는가 |
 | `token_reuse` | 결제 실패 후 재사용 시도 결과 | 재사용 주문이 401 없이 수행되는가 |
@@ -90,7 +93,7 @@ PG 시뮬레이터가 요청의 40%를 실패시키므로, 결제 실패 → 토
 k6 run k6/waiting-queue-load.js
 ```
 
-주요 env: `USERS`(기본 10000), `PRODUCTS`(기본 100), `SCENARIO`(spike|saturation), `RAMP`(spike 진입 분산 초, 기본 30, 0=동시), `RATE`(saturation 진입 속도, 기본 300), `MAX_WAIT`(토큰 대기 한도 초, 기본 300), `QUEUE_TIMEOUT`(enter/position 요청 타임아웃, 기본 30s), `BASE_URL`.
+주요 env: `USERS`(기본 10000), `PRODUCTS`(기본 100), `SCENARIO`(spike|saturation), `RAMP`(spike 진입 분산 초, 기본 30, 0=동시), `RATE`(saturation 진입 속도, 기본 300), `MAX_WAIT`(토큰 대기 한도 초, 기본 900), `QUEUE_TIMEOUT`(enter/position 요청 타임아웃, 기본 30s), `BASE_URL`.
 
 ### 실시간 모니터링 (부하 테스트 시에만)
 
