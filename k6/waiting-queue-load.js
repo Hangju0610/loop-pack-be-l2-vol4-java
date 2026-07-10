@@ -118,10 +118,9 @@ export default function (data) {
 
 /** enter 후 폴링 정책(>5000: 3s, 1000~5000: 2s, <1000: 1s)에 따라 토큰 발급까지 대기. */
 function enterAndWaitForToken(user) {
-  const headers = auth(user);
-
-  let res = http.post(`${BASE}/api/v1/queue/enter`, null,
-    { headers, timeout: QUEUE_TIMEOUT, tags: { name: 'enter' } });
+  // 대기열 경로는 무인증 — userId 쿼리 파라미터로 식별 (요구사항 5-1-1)
+  let res = http.post(`${BASE}/api/v1/queue/enter?userId=${user.id}`, null,
+    { timeout: QUEUE_TIMEOUT, tags: { name: 'enter' } });
   if (res.status !== 200) {
     flowResult.add(1, { status: 'ENTER_FAILED' });
     return null;
@@ -130,8 +129,8 @@ function enterAndWaitForToken(user) {
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < MAX_WAIT_S * 1000) {
-    res = http.get(`${BASE}/api/v1/queue/position`,
-      { headers, timeout: QUEUE_TIMEOUT, tags: { name: 'position' } });
+    res = http.get(`${BASE}/api/v1/queue/position?userId=${user.id}`,
+      { timeout: QUEUE_TIMEOUT, tags: { name: 'position' } });
     if (res.status !== 200) {
       flowResult.add(1, { status: 'POSITION_ERROR' });
       return null;
@@ -202,12 +201,11 @@ function attemptOrderAndPay(user, productIds, token) {
  * position 404 = 토큰 삭제됨(결제 성공). 한도 내 미삭제 = 결제 실패로 간주.
  */
 function waitTokenConsumed(user) {
-  const headers = auth(user);
   const startedAt = Date.now();
   while (Date.now() - startedAt < CONSUME_WAIT_S * 1000) {
     sleep(2);
-    const res = http.get(`${BASE}/api/v1/queue/position`,
-      { headers, timeout: QUEUE_TIMEOUT, tags: { name: 'position' } });
+    const res = http.get(`${BASE}/api/v1/queue/position?userId=${user.id}`,
+      { timeout: QUEUE_TIMEOUT, tags: { name: 'position' } });
     if (res.status === 404) return true;
   }
   return false;

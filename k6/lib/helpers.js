@@ -75,6 +75,7 @@ export function seed(base, { runId, users = 100, products = 5, batchSize = 20 } 
   }
 
   // userId 는 영문+숫자만(언더스코어 불가), name 은 한글만(^[가-힣]+$) 허용된다.
+  // id 는 가입 응답의 내부 식별자(USR_...) — 대기열 API 의 userId 쿼리 파라미터에 쓴다.
   const userList = [];
   for (let i = 0; i < users; i += batchSize) {
     const reqs = [];
@@ -85,8 +86,10 @@ export function seed(base, { runId, users = 100, products = 5, batchSize = 20 } 
         birthDate: '1995-06-10', email: `u${j}${runId}@test.com`,
       }), { headers: JSON_HDR }]);
     }
-    for (const r of http.batch(reqs)) {
-      if (r.status !== 200) fail(`user 가입 실패: ${r.status} ${r.body}`);
+    const resps = http.batch(reqs);
+    for (let k = 0; k < resps.length; k++) {
+      if (resps[k].status !== 200) fail(`user 가입 실패: ${resps[k].status} ${resps[k].body}`);
+      userList[i + k].id = resps[k].json('data.id');
     }
   }
   return { users: userList, productIds };

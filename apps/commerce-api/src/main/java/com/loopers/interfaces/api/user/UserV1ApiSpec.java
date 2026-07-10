@@ -12,7 +12,7 @@ public interface UserV1ApiSpec {
         summary = "회원가입",
         description = "로그인 ID, 비밀번호, 이름, 생년월일, 이메일로 회원가입합니다."
     )
-    ApiResponse<Object> signup(UserV1Dto.SignupRequest request);
+    ApiResponse<UserV1Dto.UserResponse> signup(UserV1Dto.SignupRequest request);
 
     @Operation(
         summary = "내 정보 조회",

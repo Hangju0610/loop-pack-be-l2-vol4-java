@@ -27,17 +27,17 @@ public class UserV1Controller implements UserV1ApiSpec {
     private final CouponApplicationService couponApplicationService;
 
     @PostMapping
-    public ApiResponse<Object> signup(
+    public ApiResponse<UserV1Dto.UserResponse> signup(
         @RequestBody UserV1Dto.SignupRequest request
     ) {
-        userApplicationService.signup(
+        UserInfo info = userApplicationService.signup(
             request.userId(),
             request.password(),
             request.name(),
             request.birthDate(),
             request.email()
         );
-        return ApiResponse.success();
+        return ApiResponse.success(UserV1Dto.UserResponse.from(info));
     }
 
     @GetMapping("/me")
