@@ -37,7 +37,9 @@ const RATE = Number(__ENV.RATE || 300);               // saturation: 초당 진�
 const RAMP_S = Number(__ENV.RAMP || 30);              // spike: 진입 분산 시간(초). 0 = 동시 진입
 const QUEUE_TIMEOUT = __ENV.QUEUE_TIMEOUT || '30s';   // enter/position 요청 타임아웃
 const MAX_WAIT_S = Number(__ENV.MAX_WAIT || 900);     // 토큰 발급 대기 한도(초) — 발급 20/s 기준 10,000명 소진 ~500s
-const CONSUME_WAIT_S = Number(__ENV.CONSUME_WAIT || 20); // 결제 후 토큰 삭제 판정 한도(초)
+// 결제 후 토큰 삭제 판정 한도(초). PENDING 응답(~30-40s) 이후에도 콜백이 수십 초 늦게
+// 도착하므로, 20s 창은 실제 소비를 대부분 놓쳤다 (8차: k6 101건 vs DB SUCCESS 1,107건)
+const CONSUME_WAIT_S = Number(__ENV.CONSUME_WAIT || 120);
 const RUN = __ENV.RUN_ID || `wq${Date.now()}`;
 
 // 대기열 지표
