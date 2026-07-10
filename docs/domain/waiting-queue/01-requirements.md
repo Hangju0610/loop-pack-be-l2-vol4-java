@@ -5,6 +5,7 @@
 - 수정일: 2026-07-10 — 결제 완료 시 Entry-Token 소비(5-6) 추가
 - 수정일: 2026-07-10 — enter 응답에 전체 대기 인원(waitingCount) 추가 (5-1)
 - 수정일: 2026-07-10 — 대기열 경로 무인증 전환: BCrypt 제거, userId 쿼리 파라미터 방식 (5-1, 5-2)
+- 수정일: 2026-07-10 — 발급 배치 2명/100ms 축소, 폴링 주기 5/3/1초 완화 (5-3, 5-4, 5-7 / ADR-041)
 - 상태: 확정
 
 ---
@@ -38,7 +39,7 @@
 |---|-------|------|----------|
 | US-01 | User | 대기열 진입 | 유저가 userId 로 enter 호출 시 userId + timestamp 로 대기열에 등록되고, 전체 대기 인원(waitingCount)을 함께 받는다 |
 | US-02 | User | 순번 확인 (폴링) | 대기 중이면 position + estimatedWaitSeconds, 발급 완료면 position 0 + 토큰을 받는다 |
-| US-03 | System | 토큰 발급 | 스케줄러가 100ms 마다 대기열 앞에서 20명을 꺼내 Entry-Token 을 발급한다 |
+| US-03 | System | 토큰 발급 | 스케줄러가 100ms 마다 대기열 앞에서 2명을 꺼내 Entry-Token 을 발급한다 |
 | US-04 | System | 주문 시 토큰 검증 | 주문 생성 요청의 Entry-Token 헤더가 Redis 저장 토큰과 일치해야 주문 로직이 진행된다 |
 | US-05 | System | 결제 완료 시 토큰 소비 | 결제 SUCCESS 확정 이벤트를 수신하면 해당 유저의 Entry-Token 을 삭제한다 |
 
@@ -114,7 +115,7 @@
 | 항목 | 규칙 |
 |------|------|
 | 주기 | **100ms 고정** (`fixedRate`) |
-| 배치 크기 | **ZPOPMIN 20명** → 처리율 초당 200명 |
+| 배치 크기 | **ZPOPMIN 2명** → 처리율 초당 20명. 초기값 20명(초당 200명)은 성능 테스트에서 다운스트림(주문-결제, 실측 초당 ~2건 완료 + BCrypt 용량 초당 ~46건)을 압도해 토큰 대량 TTL 만료·스레드 고갈을 유발함이 확인되어 축소 (ADR-041) |
 | 발급 | 꺼낸 각 userId 에 대해 `SET entry-token:{userId} {UUID} EX 300` |
 | Jitter | 사용하지 않음 — 단일 인스턴스 스케줄러이며, 고정 주기 소량 배치 자체가 입장 버스트(thundering herd)를 시간축에 평탄화한다 |
 
@@ -123,10 +124,10 @@
 ### 5-4. 예상 대기 시간 — `EstimatedWaitPolicy`
 
 ```
-estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올림, 최소 1초
+estimatedWaitSeconds = ceil( ceil(position / 2) × 0.1초 )   // 초 단위 올림, 최소 1초
 ```
 
-- 100ms 마다 20명씩 고정 발급이므로 순수 산수로 계산 가능하다. (= 초당 200명 → 사실상 `ceil(position / 200)` 초)
+- 100ms 마다 2명씩 고정 발급이므로 순수 산수로 계산 가능하다. (= 초당 20명 → 사실상 `ceil(position / 20)` 초)
 - 반환은 **초 단위 long, 올림** — 1초 미만 구간도 최소 1초로 응답한다. (API 필드명 `estimatedWaitSeconds` 유지)
 - `EstimatedWaitPolicy.calculate(position)` — 순수 Java 도메인 정책 클래스. `position` 은 1-base 대기 순번만 유효하며(0 = 토큰 발급 완료는 별도 분기에서 처리), `position <= 0` 입력은 `CoreException(BAD_REQUEST)` 로 가드한다.
 
@@ -165,9 +166,11 @@ estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올
 
 | position 구간 | 폴링 간격 |
 |---------------|----------|
-| 10,000 ~ 5,000 | 3초 |
-| 5,000 ~ 1,000 | 2초 |
+| 5,000 초과 | 5초 |
+| 5,000 ~ 1,000 | 3초 |
 | 1,000 ~ 0 | 1초 |
+
+- 발급 초당 20명 기준 position 5,000 은 최소 250초 대기가 확정이므로, 뒷순번의 짧은 폴링은 서버 부하만 늘린다. 폴링 총량을 줄여 다운스트림에 여유를 양보한다 (ADR-041).
 
 ---
 
@@ -176,8 +179,8 @@ estimatedWaitSeconds = ceil( ceil(position / 20) × 0.1초 )   // 초 단위 올
 | 항목 | 내용 |
 |------|------|
 | 저장소 | Redis 전용 (DB 미사용) |
-| 순번 조회 복잡도 | ZRANK O(log N), ZADD O(log N), ZPOPMIN O(log N × 20) |
-| 처리율 | 초당 200명 (100ms × 20명) |
+| 순번 조회 복잡도 | ZRANK O(log N), ZADD O(log N), ZPOPMIN O(log N × 2) |
+| 처리율 | 초당 20명 (100ms × 2명, ADR-041) |
 | 토큰 수명 | 5분 (TTL 만료 시 재진입 필요) |
 | 다중 인스턴스 | 현재 범위 제외 — 스케줄러는 단일 인스턴스 전제 |
 
