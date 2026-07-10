@@ -20,13 +20,13 @@ class EstimatedWaitPolicyTest {
     class Calculate {
 
         @ParameterizedTest(name = "position {0} → {1}초")
-        @DisplayName("초당 20명 처리(2명/100ms, ADR-041) 기준으로 예상 대기 시간을 초 단위 올림으로 계산한다")
+        @DisplayName("초당 10명 처리(1명/100ms, ADR-041 후속 조정) 기준으로 예상 대기 시간을 초 단위 올림으로 계산한다")
         @CsvSource({
                 "1, 1",       // 첫 배치라도 최소 1초
-                "20, 1",      // 1초 내 처리 경계
-                "21, 2",      // 경계 초과 시 올림
-                "4000, 200",
-                "10000, 500",
+                "10, 1",      // 1초 내 처리 경계
+                "11, 2",      // 경계 초과 시 올림
+                "4000, 400",
+                "10000, 1000",
         })
         void calculates_wait_seconds_rounded_up(long position, long expectedSeconds) {
 

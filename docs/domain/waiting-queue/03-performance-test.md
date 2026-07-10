@@ -18,7 +18,7 @@
 | 유저 | 10,000명 | setup 단계에서 admin/일반 API로 생성 (`http.batch` 병렬 시드) |
 | 상품 | 100개 | 브랜드 1개 (브랜드는 무관) |
 | 재고 | 상품당 100,000,000 | 10,000명 전원 구매해도 충분 |
-| 토큰 발급 | 100ms당 2명 (초당 20명) — 3차까지는 20명/100ms, 4차부터 ADR-041 적용 | `EntryTokenPublishScheduler` |
+| 토큰 발급 | 100ms당 1명 (초당 10명) — 3차까지 20명, 4·5차 2명, 6차부터 1명 (ADR-041) | `EntryTokenPublishScheduler` |
 | Entry-Token TTL | 5분 | Redis String |
 | PG 시뮬레이터 | 요청 40% 실패, 1~5초 후 콜백 | 결제 실패 경로가 자연 발생 |
 

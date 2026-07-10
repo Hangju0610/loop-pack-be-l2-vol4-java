@@ -85,7 +85,7 @@ sequenceDiagram
         alt 대기 중 (rank 존재)
             RC-->>SVC: position = rank + 1 (1-base)
             SVC->>EWP: calculate(position)
-            EWP-->>SVC: estimatedWaitSeconds = ceil(position / 20)초 (올림, 최소 1초)
+            EWP-->>SVC: estimatedWaitSeconds = ceil(position / 10)초 (올림, 최소 1초)
             SVC-->>CTL: Info { position, estimatedWaitSeconds }
             CTL-->>C: 200 OK { "position": 123, "estimatedWaitSeconds": 120 }
         else 미등록 (rank = null)
@@ -109,10 +109,10 @@ sequenceDiagram
 
     loop 100ms 마다
         SCH->>SVC: publishEntryTokens()
-        SVC->>WQR: popMin(2)
-        WQR->>R: ZPOPMIN waiting-queue 2
-        R-->>WQR: 대기열 앞 최대 2명 (userId 목록)
-        WQR-->>SVC: userIds (0 ~ 2명)
+        SVC->>WQR: popMin(1)
+        WQR->>R: ZPOPMIN waiting-queue 1
+        R-->>WQR: 대기열 앞 최대 1명 (userId 목록)
+        WQR-->>SVC: userIds (0 ~ 1명)
 
         loop 각 userId
             SVC->>VO: EntryTokenVO.create(userId)
@@ -123,7 +123,7 @@ sequenceDiagram
         end
     end
 
-    Note over SCH,R: 처리율 = 100ms × 2명 = 초당 20명 (ADR-041)<br/>⚠ 알려진 한계(수용): ZPOPMIN ~ SET 사이 앱 종료 시<br/>해당 유저 유실 — enter 재호출로 복구
+    Note over SCH,R: 처리율 = 100ms × 1명 = 초당 10명 (ADR-041 후속 조정)<br/>⚠ 알려진 한계(수용): ZPOPMIN ~ SET 사이 앱 종료 시<br/>해당 유저 유실 — enter 재호출로 복구
 ```
 
 ### 1-4. POST /api/v1/orders — 주문 시 Entry-Token 검증

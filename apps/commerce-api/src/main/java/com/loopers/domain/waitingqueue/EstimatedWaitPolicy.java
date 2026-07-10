@@ -5,8 +5,9 @@ import com.loopers.support.error.ErrorType;
 
 public class EstimatedWaitPolicy {
 
-    // 2명/100ms = 초당 20명. 다운스트림(주문-결제) 처리량과 BCrypt 용량(초당 ~46건)에 맞춘 상한 (ADR-041)
-    public static final int BATCH_SIZE = 2;
+    // 1명/100ms = 초당 10명. 결제 스레드 점유 상한(200스레드÷콜백대기 10s = 20건/s)의 ~50%로
+    // 재시도·폴링 여유를 확보한 값 (ADR-041 후속 조정)
+    public static final int BATCH_SIZE = 1;
     public static final long PUBLISH_INTERVAL_MILLIS = 100L;
 
     public long calculate(long position) {
