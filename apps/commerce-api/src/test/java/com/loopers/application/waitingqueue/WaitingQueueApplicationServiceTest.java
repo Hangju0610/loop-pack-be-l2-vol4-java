@@ -112,8 +112,8 @@ class WaitingQueueApplicationServiceTest {
     class PublishEntryTokens {
 
         @Test
-        @DisplayName("대기열 앞 최대 20명을 꺼내 Entry-Token을 발급하고 대기열에서 제거한다")
-        void publishes_tokens_for_up_to_20_users_and_removes_them_from_queue() {
+        @DisplayName("대기열 앞 최대 2명(ADR-041)을 꺼내 Entry-Token을 발급하고 대기열에서 제거한다")
+        void publishes_tokens_for_up_to_2_users_and_removes_them_from_queue() {
 
             waitingQueueApplicationService.enter("user-1");
             waitingQueueApplicationService.enter("user-2");
@@ -124,6 +124,20 @@ class WaitingQueueApplicationServiceTest {
             assertThat(entryTokenRepository.find("user-2")).isPresent();
             assertThat(waitingQueueRepository.findRank("user-1")).isEmpty();
             assertThat(waitingQueueRepository.findRank("user-2")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("배치 크기(2명)를 초과한 유저는 대기열에 남는다")
+        void leaves_users_beyond_batch_size_in_queue() {
+
+            waitingQueueApplicationService.enter("user-1");
+            waitingQueueApplicationService.enter("user-2");
+            waitingQueueApplicationService.enter("user-3");
+
+            waitingQueueApplicationService.publishEntryTokens();
+
+            assertThat(entryTokenRepository.find("user-3")).isEmpty();
+            assertThat(waitingQueueRepository.findRank("user-3")).contains(0L);
         }
     }
 
