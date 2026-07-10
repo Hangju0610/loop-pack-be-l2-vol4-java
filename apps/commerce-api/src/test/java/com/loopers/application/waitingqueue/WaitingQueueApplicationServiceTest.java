@@ -12,10 +12,22 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.RedisTemplate;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 @SpringBootTest
 @DisplayName("WaitingQueueApplicationService 통합 테스트")
@@ -32,6 +44,9 @@ class WaitingQueueApplicationServiceTest {
 
     @Autowired
     private RedisCleanUp redisCleanUp;
+
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;
 
     @AfterEach
     void tearDown() {
@@ -172,6 +187,134 @@ class WaitingQueueApplicationServiceTest {
                     .isInstanceOf(CoreException.class)
                     .hasFieldOrPropertyWithValue("errorType", ErrorType.UNAUTHORIZED)
                     .hasMessageContaining("Entry-Token이 일치하지 않습니다");
+        }
+    }
+
+    @Nested
+    @DisplayName("동시 진입 (concurrent enter)")
+    class ConcurrentEnter {
+
+        @Test
+        @DisplayName("여러 유저가 동시에 진입해도 유실 없이 전원 대기열에 등록된다")
+        void registers_all_users_without_loss_under_concurrent_enter() throws InterruptedException {
+
+            int userCount = 50;
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch doneLatch = new CountDownLatch(userCount);
+            ExecutorService executor = Executors.newFixedThreadPool(userCount);
+            try {
+                for (int i = 0; i < userCount; i++) {
+                    String userId = "user-" + i;
+                    executor.submit(() -> {
+                        try {
+                            startLatch.await();
+                            waitingQueueApplicationService.enter(userId);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            doneLatch.countDown();
+                        }
+                    });
+                }
+                startLatch.countDown();
+                assertThat(doneLatch.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                executor.shutdownNow();
+            }
+
+            assertThat(waitingQueueRepository.count()).isEqualTo(userCount);
+            for (int i = 0; i < userCount; i++) {
+                assertThat(waitingQueueRepository.findRank("user-" + i)).isPresent();
+            }
+        }
+
+        @Test
+        @DisplayName("동시에 진입해도 발급 순서는 진입 timestamp 오름차순을 따른다 (공정성)")
+        void issues_tokens_in_entry_timestamp_order_under_concurrent_enter() throws InterruptedException {
+
+            int userCount = 50;
+            Map<String, Long> timestamps = new ConcurrentHashMap<>();
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch doneLatch = new CountDownLatch(userCount);
+            ExecutorService executor = Executors.newFixedThreadPool(userCount);
+            try {
+                for (int i = 0; i < userCount; i++) {
+                    String userId = "user-" + i;
+                    executor.submit(() -> {
+                        try {
+                            startLatch.await();
+                            WaitingQueueInfo.Enter result = waitingQueueApplicationService.enter(userId);
+                            timestamps.put(userId, result.timestamp());
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        } finally {
+                            doneLatch.countDown();
+                        }
+                    });
+                }
+                startLatch.countDown();
+                assertThat(doneLatch.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                executor.shutdownNow();
+            }
+
+            List<String> issuedOrder = new ArrayList<>();
+            List<String> batch;
+            while (!(batch = waitingQueueRepository.popMin(10)).isEmpty()) {
+                issuedOrder.addAll(batch);
+            }
+
+            assertThat(issuedOrder).hasSize(userCount);
+            for (int i = 1; i < issuedOrder.size(); i++) {
+                long previous = timestamps.get(issuedOrder.get(i - 1));
+                long current = timestamps.get(issuedOrder.get(i));
+                assertThat(previous)
+                        .as("발급 순서 %d번째(%s) timestamp가 %d번째(%s)보다 늦으면 안 된다",
+                                i - 1, issuedOrder.get(i - 1), i, issuedOrder.get(i))
+                        .isLessThanOrEqualTo(current);
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("Entry-Token 만료 (TTL expiry)")
+    class EntryTokenExpiry {
+
+        private static final String TOKEN_KEY_PREFIX = "entry-token:";
+
+        private void saveTokenExpiringSoon(EntryTokenVO token) {
+            entryTokenRepository.save(token);
+            redisTemplate.expire(TOKEN_KEY_PREFIX + token.userId(), Duration.ofMillis(300));
+            await().atMost(3, TimeUnit.SECONDS)
+                    .untilAsserted(() -> assertThat(entryTokenRepository.find(token.userId())).isEmpty());
+        }
+
+        @Test
+        @DisplayName("만료된 토큰으로는 주문 검증(validateEntryToken)을 통과할 수 없다")
+        void rejects_expired_token_on_order_validation() {
+
+            EntryTokenVO token = EntryTokenVO.create("user-1");
+            saveTokenExpiringSoon(token);
+
+            assertThatThrownBy(() -> waitingQueueApplicationService.validateEntryToken("user-1", token.token()))
+                    .isInstanceOf(CoreException.class)
+                    .hasFieldOrPropertyWithValue("errorType", ErrorType.UNAUTHORIZED)
+                    .hasMessageContaining("Entry-Token이 없습니다");
+        }
+
+        @Test
+        @DisplayName("토큰 만료 후 getPosition은 NOT_FOUND — 유저는 다시 대기열에 진입해야 한다")
+        void requires_reentry_after_token_expiry() {
+
+            saveTokenExpiringSoon(EntryTokenVO.create("user-1"));
+
+            assertThatThrownBy(() -> waitingQueueApplicationService.getPosition("user-1"))
+                    .isInstanceOf(CoreException.class)
+                    .hasFieldOrPropertyWithValue("errorType", ErrorType.NOT_FOUND);
+
+            waitingQueueApplicationService.enter("user-1");
+
+            assertThat(waitingQueueRepository.findRank("user-1")).contains(0L);
         }
     }
 
