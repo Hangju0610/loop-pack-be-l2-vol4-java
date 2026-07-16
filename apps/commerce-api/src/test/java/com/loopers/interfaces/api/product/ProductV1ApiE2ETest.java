@@ -17,9 +17,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.*;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +41,7 @@ class ProductV1ApiE2ETest {
     private final LikeApplicationService likeApplicationService;
     private final UserApplicationService userApplicationService;
     private final ProductMetricsJpaRepository productMetricsJpaRepository;
+    private final RedisTemplate<String, String> redisTemplate;
     private final DatabaseCleanUp databaseCleanUp;
     private final RedisCleanUp redisCleanUp;
 
@@ -50,6 +53,7 @@ class ProductV1ApiE2ETest {
             LikeApplicationService likeApplicationService,
             UserApplicationService userApplicationService,
             ProductMetricsJpaRepository productMetricsJpaRepository,
+            RedisTemplate<String, String> redisTemplate,
             DatabaseCleanUp databaseCleanUp,
             RedisCleanUp redisCleanUp
     ) {
@@ -59,6 +63,7 @@ class ProductV1ApiE2ETest {
         this.likeApplicationService = likeApplicationService;
         this.userApplicationService = userApplicationService;
         this.productMetricsJpaRepository = productMetricsJpaRepository;
+        this.redisTemplate = redisTemplate;
         this.databaseCleanUp = databaseCleanUp;
         this.redisCleanUp = redisCleanUp;
     }
@@ -82,6 +87,10 @@ class ProductV1ApiE2ETest {
 
     private ProductInfo createProduct(String brandId, String name, Long price, Integer quantity) {
         return productApplicationService.createProduct(brandId, name, name + " 설명", price, quantity);
+    }
+
+    private void seedRanking(LocalDate date, String productId, double score) {
+        redisTemplate.opsForZSet().add("ranking:all:" + date.format(DateTimeFormatter.ofPattern("yyyyMMdd")), productId, score);
     }
 
     // ─────────────────────────────────────────────
@@ -298,6 +307,29 @@ class ProductV1ApiE2ETest {
             assertThat(data.likeCount()).isEqualTo(0L);
             assertThat(data.quantity()).isEqualTo(5);
             assertThat(data.description()).isEqualTo("에어맥스 설명");
+            assertThat(data.rank()).isNull();
+        }
+
+        @DisplayName("오늘 랭킹에 포함된 상품이면 rank를 포함해 반환한다.")
+        @Test
+        void returnsRank_whenProductIsRankedToday() {
+            // arrange
+            BrandInfo brand = createBrand("나이키");
+            ProductInfo created = createProduct(brand.id(), "에어맥스", 100_000L, 5);
+            seedRanking(LocalDate.now(), created.id(), 100.0);
+
+            // act
+            ParameterizedTypeReference<ApiResponse<ProductV1Dto.PdpResponse>> type =
+                    new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<ProductV1Dto.PdpResponse>> response =
+                    testRestTemplate.exchange(
+                            ENDPOINT_CUSTOMER + "/" + created.id(),
+                            HttpMethod.GET, HttpEntity.EMPTY, type
+                    );
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody().data().rank()).isEqualTo(1L);
         }
 
         @DisplayName("존재하지 않는 productId로 조회하면 404를 반환한다.")
@@ -456,6 +488,7 @@ class ProductV1ApiE2ETest {
             assertThat(data.description()).isEqualTo("에어맥스 설명");
             assertThat(data.createdAt()).isNotNull();
             assertThat(data.updatedAt()).isNotNull();
+            assertThat(data.rank()).isNull();
         }
     }
 
