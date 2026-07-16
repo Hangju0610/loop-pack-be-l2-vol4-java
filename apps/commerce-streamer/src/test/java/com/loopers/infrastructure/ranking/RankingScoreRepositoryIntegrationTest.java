@@ -91,6 +91,20 @@ class RankingScoreRepositoryIntegrationTest {
         assertTrue(ttl > 0 && ttl <= 2 * 24 * 3600, "TTL은 (0, 2일] 범위여야 한다: " + ttl);
     }
 
+    @DisplayName("[콜드 스타트] 랭킹 키가 없어도 최초 점수 적재 시 ZSET을 생성하고 TTL을 설정한다.")
+    @Test
+    void createsRankingZSetAndTtl_whenIncrementScoresCalledWithoutExistingKey() {
+        assertFalse(Boolean.TRUE.equals(redisTemplate.hasKey(rankingKey(TODAY))));
+
+        rankingScoreRepository.incrementScores(TODAY, Map.of("PRD_A", 0.2));
+
+        assertTrue(Boolean.TRUE.equals(redisTemplate.hasKey(rankingKey(TODAY))));
+        assertEquals(0.2, scoreOf(TODAY, "PRD_A"), 0.0001);
+        Long ttl = redisTemplate.getExpire(rankingKey(TODAY), TimeUnit.SECONDS);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0 && ttl <= 2 * 24 * 3600, "TTL은 (0, 2일] 범위여야 한다: " + ttl);
+    }
+
     @DisplayName("[TTL] 이미 TTL이 있는 키는 후속 쓰기에서 TTL이 갱신되지 않는다.")
     @Test
     void doesNotResetTtl_whenKeyAlreadyHasTtl() {

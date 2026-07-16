@@ -81,6 +81,22 @@ class RankingCarryOverSchedulerIntegrationTest {
         assertTrue(ttl > 0 && ttl <= 2 * 24 * 3600);
     }
 
+    @DisplayName("[콜드 스타트] 오늘 랭킹 키가 없고 전일 랭킹만 있으면 감쇠 점수로 오늘 ZSET을 생성한다.")
+    @Test
+    void createsTodayRankingFromYesterdayRanking_whenTodayRankingAbsent() {
+        rankingScoreRepository.incrementScores(YESTERDAY, Map.of("PRD_A", 10.0, "PRD_B", 5.0));
+        assertFalse(Boolean.TRUE.equals(redisTemplate.hasKey(rankingKey(TODAY))));
+
+        scheduler.carryOver(TODAY);
+
+        assertTrue(Boolean.TRUE.equals(redisTemplate.hasKey(rankingKey(TODAY))));
+        assertEquals(1.0, scoreOf(TODAY, "PRD_A"), 0.0001);
+        assertEquals(0.5, scoreOf(TODAY, "PRD_B"), 0.0001);
+        Long ttl = redisTemplate.getExpire(rankingKey(TODAY), TimeUnit.SECONDS);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0 && ttl <= 2 * 24 * 3600);
+    }
+
     @DisplayName("[멱등] 같은 날 이월을 2회 실행해도 전일 점수는 1회만 이월된다.")
     @Test
     void carriesOverOnlyOnce_whenExecutedTwiceOnSameDay() {
