@@ -1,16 +1,16 @@
 package com.loopers.application.ranking;
 
 import com.loopers.domain.ranking.RankingScoreRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
 @Slf4j
-@RequiredArgsConstructor
 @Component
 public class RankingCarryOverScheduler {
 
@@ -18,10 +18,21 @@ public class RankingCarryOverScheduler {
     private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
 
     private final RankingScoreRepository rankingScoreRepository;
+    private final Clock clock;
 
-    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")
+    @Autowired
+    public RankingCarryOverScheduler(RankingScoreRepository rankingScoreRepository) {
+        this(rankingScoreRepository, Clock.system(ZONE_SEOUL));
+    }
+
+    RankingCarryOverScheduler(RankingScoreRepository rankingScoreRepository, Clock clock) {
+        this.rankingScoreRepository = rankingScoreRepository;
+        this.clock = clock;
+    }
+
+    @Scheduled(cron = "0 55 23 * * *", zone = "Asia/Seoul")
     public void carryOverDaily() {
-        carryOver(LocalDate.now(ZONE_SEOUL));
+        carryOver(LocalDate.now(clock).plusDays(1));
     }
 
     void carryOver(LocalDate today) {

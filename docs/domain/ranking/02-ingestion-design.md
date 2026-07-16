@@ -11,7 +11,7 @@
 
 - commerce-api 는 기존 Outbox 패턴으로 이벤트를 이미 발행 중이므로 **수정하지 않는다**.
 - commerce-streamer 에 **랭킹 전용 컨슈머 그룹**(기존 metrics 컨슈머 그룹과 분리)을 신설한다.
-- 자정에 전일 랭킹을 감쇠 이월(carry-over)해 콜드 스타트를 방지한다.
+- 23시 55분에 당일 랭킹을 다음 일자로 감쇠 이월(carry-over)해 일자 전환 콜드 스타트를 방지한다.
 
 ## 2. 주요 결정 사항 (Q&A 확정)
 
@@ -23,7 +23,7 @@
 | 4 | 구매 점수 | **0.7 × quantity (수량 반영)** | 기존 metrics 집계(`incrementPurchaseCount(quantity)`)와 의미 일치. 판매량이 랭킹에 직접 반영 |
 | 5 | 좋아요 취소 | **ZINCRBY -0.2 차감, 음수 점수 허용** | 차감하지 않으면 좋아요 등록/취소 반복이 랭킹 부스팅 어뷰징 수단이 됨 |
 | 6 | TTL 부여 | **컨슈머: 쓰기 후 `EXPIRE NX` 2일 (fallback)** + **이월 잡: 키 생성 직후 `EXPIRE` 2일** | "생성 + 2일" 의미 정확. 이월 잡 실패 시에도 컨슈머 fallback 으로 TTL 보장 |
-| 7 | 콜드 스타트 | **자정 `ZUNIONSTORE` 감쇠 이월 포함, 가중치 0.1, commerce-streamer `@Scheduled`** | 새벽 시간대 랭킹 공백 방지. 오늘 키 자신을 union 에 포함해 덮어쓰기 레이스 방지 |
+| 7 | 콜드 스타트 | **23시 55분 `ZUNIONSTORE` 감쇠 이월 포함, 가중치 0.1, commerce-streamer `@Scheduled`** | 일자 전환 직후 랭킹 공백 방지. 대상 일자 키 자신을 union 에 포함해 덮어쓰기 레이스 방지 |
 
 ## 3. 점수 정책
 
@@ -50,7 +50,7 @@
 1. 사용자가 상품을 조회/좋아요/구매하면 commerce-api 가 Outbox 를 통해 Kafka 로 이벤트를 발행한다 (기존 동작).
 2. commerce-streamer 의 랭킹 컨슈머가 이벤트를 소비해 발생일 ZSET 에 가중치 점수를 누적한다.
 3. 사용자가 랭킹 페이지를 열면 수 초 내 반영된 오늘자 랭킹을 본다 (기존 조회 API).
-4. 자정이 지나면 전일 랭킹의 10%가 이월된 상태에서 오늘 랭킹이 시작되어, 새벽에도 랭킹 페이지가 비지 않는다.
+4. 23시 55분에 당일 랭킹의 10%가 다음 일자 키로 미리 이월되어, 일자 전환 직후에도 랭킹 페이지가 비지 않는다.
 
 ## 6. 유저 스토리
 
@@ -82,12 +82,13 @@
 - ZINCRBY 적용 후 해당 키에 `EXPIRE key 2일 NX` 를 호출한다 (Redis 7, TTL 없을 때만 설정).
 
 ### FR-5. 콜드 스타트 이월 잡 (신규)
-- commerce-streamer 에 `@Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")` 잡을 둔다.
-- `SETNX ranking:carryover:{today}` 가드로 중복 실행을 방지한다 (ZUNIONSTORE 재실행 시 전일 점수가 중복 가산되므로 필수).
-- `ZUNIONSTORE today 2 today yesterday WEIGHTS 1 0.1` 로 전일 점수의 10% 를 이월한다.
-  - 오늘 키 자신을 union 에 포함해, 자정 직후 먼저 적재된 점수가 덮어써지지 않도록 한다.
-- 직후 `EXPIRE today 2일` (NX 아님, 명시 설정) 을 호출한다.
-- 전일 키가 없으면 아무것도 하지 않는다 (info 로그).
+- commerce-streamer 에 `@Scheduled(cron = "0 55 23 * * *", zone = "Asia/Seoul")` 잡을 둔다.
+- 실행 시점의 다음 일자를 대상 일자로 보고, `targetDate = LocalDate.now(Asia/Seoul).plusDays(1)` 로 이월한다.
+- `SETNX ranking:carryover:{targetDate}` 가드로 중복 실행을 방지한다 (ZUNIONSTORE 재실행 시 당일 점수가 중복 가산되므로 필수).
+- `ZUNIONSTORE targetDate 2 targetDate currentDate WEIGHTS 1 0.1` 로 당일 점수의 10% 를 다음 일자 키에 이월한다.
+  - 대상 일자 키 자신을 union 에 포함해, 먼저 적재된 점수가 덮어써지지 않도록 한다.
+- 직후 `EXPIRE targetDate 2일` (NX 아님, 명시 설정) 을 호출한다.
+- 당일 키가 없으면 아무것도 하지 않는다 (info 로그).
 
 ## 8. 비기능 요구사항
 
@@ -104,8 +105,8 @@
 4. 동일 eventId 를 2회 전달해도 점수는 1회만 반영된다.
 5. 배치 중간에 DB 예외가 발생해 재처리되어도 점수가 이중 적재되지 않는다.
 6. ZINCRBY 로 생성된 키에 TTL(≤2일)이 설정되어 있다.
-7. 이월 잡 실행 후 오늘 키에 `기존 오늘 점수 + 전일 점수 × 0.1` 이 반영되고 TTL 이 설정된다.
-8. 이월 잡을 같은 날 2회 실행해도 전일 점수가 1회만 이월된다.
+7. 이월 잡 실행 후 다음 일자 키에 `기존 다음 일자 점수 + 당일 점수 × 0.1` 이 반영되고 TTL 이 설정된다.
+8. 이월 잡을 같은 대상 일자에 2회 실행해도 당일 점수가 1회만 이월된다.
 9. `occurredAt` 이 어제인 이벤트를 오늘 소비하면 어제 키에 적재된다.
 
 ## 10. 의존성
