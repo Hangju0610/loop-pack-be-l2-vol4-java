@@ -6,6 +6,7 @@ import com.loopers.domain.inventory.InventoryEntity;
 import com.loopers.domain.inventory.InventoryRepository;
 import com.loopers.domain.like.LikeEntity;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.infrastructure.inventory.InventoryJpaRepository;
 import com.loopers.infrastructure.like.LikeJpaRepository;
 import com.loopers.support.error.CoreException;
@@ -22,6 +23,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.RedisTemplate;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,6 +50,9 @@ class ProductApplicationServiceIntegrationTest {
     @SpyBean
     private LikeRepository likeRepository;
 
+    @SpyBean
+    private RankingRepository rankingRepository;
+
     @Autowired
     private InventoryJpaRepository inventoryJpaRepository;
 
@@ -57,9 +65,12 @@ class ProductApplicationServiceIntegrationTest {
     @Autowired
     private RedisCleanUp redisCleanUp;
 
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;
+
     @AfterEach
     void tearDown() {
-        Mockito.reset(inventoryRepository, likeRepository);
+        Mockito.reset(inventoryRepository, likeRepository, rankingRepository);
         databaseCleanUp.truncateAllTables();
         // 상품 목록 page-0 캐시(Redis)가 테스트 간 공유되지 않도록 정리
         redisCleanUp.truncateAll();
@@ -136,13 +147,13 @@ class ProductApplicationServiceIntegrationTest {
             ProductInfo created = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 5);
 
             // act
-            ProductInfo result = productApplicationService.getProduct(created.id());
+            ProductDetailInfo result = productApplicationService.getProduct(created.id());
 
             // assert
             assertAll(
-                    () -> assertNotNull(result.id()),
-                    () -> assertEquals("나이키", result.brandName()),
-                    () -> assertEquals(5, result.quantity())
+                    () -> assertNotNull(result.product().id()),
+                    () -> assertEquals("나이키", result.product().brandName()),
+                    () -> assertEquals(5, result.product().quantity())
             );
         }
 
@@ -153,6 +164,58 @@ class ProductApplicationServiceIntegrationTest {
             CoreException exception = assertThrows(CoreException.class,
                     () -> productApplicationService.getProduct("999"));
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // getProduct — 상품 상세 rank 조회 (오늘자 랭킹)
+    // ─────────────────────────────────────────────
+
+    @DisplayName("상품 상세 rank 조회 (오늘자 랭킹)")
+    @Nested
+    class GetProductRank {
+
+        @DisplayName("[ECP] 오늘 랭킹에 포함된 상품이면 rank가 채워진다.")
+        @Test
+        void returnsRank_whenProductIsRankedToday() {
+            // arrange
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo created = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 10);
+            String key = "ranking:all:" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            redisTemplate.opsForZSet().add(key, created.id(), 100.0);
+
+            // act
+            ProductDetailInfo result = productApplicationService.getProduct(created.id());
+
+            // assert
+            assertEquals(1L, result.rank());
+        }
+
+        @DisplayName("[ECP] 오늘 랭킹에 없는 상품이면 rank는 null이다.")
+        @Test
+        void returnsNullRank_whenProductIsNotRankedToday() {
+            // arrange
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo created = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 10);
+
+            // act
+            ProductDetailInfo result = productApplicationService.getProduct(created.id());
+
+            // assert
+            assertNull(result.rank());
+        }
+
+        @DisplayName("[Error Guessing] 랭킹 조회 중 예외가 발생해도 rank=null로 degrade되어 상세 조회는 정상 응답한다.")
+        @Test
+        void returnsNullRank_whenRankingRepositoryFails() {
+            // arrange
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            ProductInfo created = productApplicationService.createProduct(brand.id(), "에어맥스", "운동화 설명", 100_000L, 10);
+            doThrow(new RuntimeException("강제 실패")).when(rankingRepository).findRank(any(LocalDate.class), anyString());
+
+            // act & assert
+            ProductDetailInfo result = assertDoesNotThrow(() -> productApplicationService.getProduct(created.id()));
+            assertNull(result.rank());
         }
     }
 
@@ -219,12 +282,12 @@ class ProductApplicationServiceIntegrationTest {
             productApplicationService.updateProduct(created.id(), "에어포스", "새 설명", 90_000L, 20);
 
             // assert
-            ProductInfo result = productApplicationService.getProduct(created.id());
+            ProductDetailInfo result = productApplicationService.getProduct(created.id());
             assertAll(
-                    () -> assertEquals("에어포스", result.name()),
-                    () -> assertEquals("새 설명", result.description()),
-                    () -> assertEquals(90_000L, result.price()),
-                    () -> assertEquals(20, result.quantity())
+                    () -> assertEquals("에어포스", result.product().name()),
+                    () -> assertEquals("새 설명", result.product().description()),
+                    () -> assertEquals(90_000L, result.product().price()),
+                    () -> assertEquals(20, result.product().quantity())
             );
         }
 
@@ -320,10 +383,10 @@ class ProductApplicationServiceIntegrationTest {
 
             // assert: product 수정이 롤백되어 원래 값 유지
             Mockito.reset(inventoryRepository);
-            ProductInfo result = productApplicationService.getProduct(created.id());
+            ProductDetailInfo result = productApplicationService.getProduct(created.id());
             assertAll(
-                    () -> assertEquals("에어맥스", result.name()),
-                    () -> assertEquals(100_000L, result.price())
+                    () -> assertEquals("에어맥스", result.product().name()),
+                    () -> assertEquals(100_000L, result.product().price())
             );
         }
 

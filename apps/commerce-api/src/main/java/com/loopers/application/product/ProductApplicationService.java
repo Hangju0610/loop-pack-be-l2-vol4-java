@@ -67,13 +67,14 @@ public class ProductApplicationService {
         return ProductInfo.from(product, brand, inventory, 0L);
     }
 
-    public ProductInfo getProduct(String id) {
-        return assembleProductInfo(findProductOrThrow(id));
+    public ProductDetailInfo getProduct(String id) {
+        ProductInfo product = assembleProductInfo(findProductOrThrow(id));
+        return new ProductDetailInfo(product, findTodayRank(id));
     }
 
     @Transactional
-    public ProductInfo getProductForCustomer(String id, String userId) {
-        ProductInfo product = getProduct(id);
+    public ProductDetailInfo getProductForCustomer(String id, String userId) {
+        ProductDetailInfo product = getProduct(id);
         ProductViewedEvent viewedEvent = new ProductViewedEvent(id, userId);
         outboxEventRepository.createAndSave(viewedEvent, CATALOG_EVENTS_TOPIC, UUID.randomUUID().toString());
         eventPublisher.publishEvent(viewedEvent);
@@ -217,6 +218,15 @@ public class ProductApplicationService {
                 .map(ProductMetricsEntity::getLikeCount)
                 .orElse(0L);
         return ProductInfo.from(product, brand, inventory, likeCount);
+    }
+
+    private Long findTodayRank(String productId) {
+        try {
+            return rankingRepository.findRank(LocalDate.now(), productId).orElse(null);
+        } catch (Exception e) {
+            log.warn("랭킹 조회 실패, rank=null로 degrade. productId={}", productId, e);
+            return null;
+        }
     }
 
     private ProductEntity findProductOrThrow(String id) {
