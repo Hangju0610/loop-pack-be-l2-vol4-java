@@ -98,3 +98,7 @@ spring:
       on-profile: test
 pg:
   callback-timeout-seconds: 2
+
+waiting-queue:
+  scheduler:
+    enabled: false

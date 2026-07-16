@@ -84,6 +84,21 @@ public class UserV1ApiE2ETest {
             Assertions.assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         }
 
+        @DisplayName("회원가입에 성공하면, 내부 식별자(id)를 응답에 포함한다.")
+        @Test
+        void returnsInternalId_whenSignupSucceeds() {
+            // arrange
+            UserV1Dto.SignupRequest signupRequest = new UserV1Dto.SignupRequest(DEFAULT_USER_ID, DEFAULT_PASSWORD, DEFAULT_NAME, DEFAULT_BIRTH_DATE, DEFAULT_EMAIL);
+
+            // act
+            ParameterizedTypeReference<ApiResponse<UserV1Dto.UserResponse>> responseType = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<UserV1Dto.UserResponse>> response = testRestTemplate.exchange(ENDPOINT_SIGNUP, HttpMethod.POST, new HttpEntity<>(signupRequest), responseType);
+
+            // assert
+            Assertions.assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            Assertions.assertThat(response.getBody().data().id()).startsWith("USR_");
+        }
+
         @DisplayName("이미 존재하는 회원 ID를 주면, 회원가입이 실패한다.")
         @Test
         void failSignup_whenExistingUserIdIsProvided() {

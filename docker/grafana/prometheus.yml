@@ -6,3 +6,8 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['host.docker.internal:8081']
+
+  # 부하 테스트 시에만 뜨는 redis-exporter (--profile loadtest). 꺼져 있으면 target down 일 뿐 무해.
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']

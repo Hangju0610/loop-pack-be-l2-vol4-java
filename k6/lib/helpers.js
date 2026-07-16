@@ -49,32 +49,48 @@ export function randCardNo() {
   return `${g()}-${g()}-${g()}-${g()}`;
 }
 
-/** 브랜드 1 + 고재고 상품 5 + 유저 N 생성. default/scenario 로 넘길 데이터 반환. */
-export function seed(base, { runId, users = 100, products = 5 } = {}) {
+/**
+ * 브랜드 1 + 고재고 상품 N + 유저 N 생성. default/scenario 로 넘길 데이터 반환.
+ * batchSize 개씩 http.batch 로 병렬 생성한다 (유저 수천 명 시드 시간 단축.
+ * 단, 회원가입은 서버 BCrypt 해싱 때문에 CPU 병목이라 과도한 병렬은 무의미).
+ */
+export function seed(base, { runId, users = 100, products = 5, batchSize = 20 } = {}) {
   let res = http.post(`${base}/api-admin/v1/brands`,
     JSON.stringify({ name: `brand-${runId}`, description: 'load test' }), { headers: ADMIN });
   if (res.status !== 200) fail(`brand 생성 실패: ${res.status} ${res.body}`);
   const brandId = res.json('data.id');
 
   const productIds = [];
-  for (let i = 0; i < products; i++) {
-    res = http.post(`${base}/api-admin/v1/products`, JSON.stringify({
-      brandId, name: `p-${runId}-${i}`, description: 'lt', price: 1000 + i * 500, quantity: 100000000,
-    }), { headers: ADMIN });
-    if (res.status !== 201 && res.status !== 200) fail(`product 생성 실패: ${res.status} ${res.body}`);
-    productIds.push(res.json('data.id'));
+  for (let i = 0; i < products; i += batchSize) {
+    const reqs = [];
+    for (let j = i; j < Math.min(i + batchSize, products); j++) {
+      reqs.push(['POST', `${base}/api-admin/v1/products`, JSON.stringify({
+        brandId, name: `p-${runId}-${j}`, description: 'lt', price: 1000 + j * 500, quantity: 100000000,
+      }), { headers: ADMIN }]);
+    }
+    for (const r of http.batch(reqs)) {
+      if (r.status !== 201 && r.status !== 200) fail(`product 생성 실패: ${r.status} ${r.body}`);
+      productIds.push(r.json('data.id'));
+    }
   }
 
   // userId 는 영문+숫자만(언더스코어 불가), name 은 한글만(^[가-힣]+$) 허용된다.
+  // id 는 가입 응답의 내부 식별자(USR_...) — 대기열 API 의 userId 쿼리 파라미터에 쓴다.
   const userList = [];
-  for (let i = 0; i < users; i++) {
-    const u = { userId: `u${runId}n${i}`, password: 'abc123!@#' };
-    const res = http.post(`${base}/api/v1/users`, JSON.stringify({
-      userId: u.userId, password: u.password, name: '테스트',
-      birthDate: '1995-06-10', email: `u${i}${runId}@test.com`,
-    }), { headers: JSON_HDR });
-    if (res.status !== 200) fail(`user 가입 실패: ${res.status} ${res.body}`);
-    userList.push(u);
+  for (let i = 0; i < users; i += batchSize) {
+    const reqs = [];
+    for (let j = i; j < Math.min(i + batchSize, users); j++) {
+      userList.push({ userId: `u${runId}n${j}`, password: 'abc123!@#' });
+      reqs.push(['POST', `${base}/api/v1/users`, JSON.stringify({
+        userId: `u${runId}n${j}`, password: 'abc123!@#', name: '테스트',
+        birthDate: '1995-06-10', email: `u${j}${runId}@test.com`,
+      }), { headers: JSON_HDR }]);
+    }
+    const resps = http.batch(reqs);
+    for (let k = 0; k < resps.length; k++) {
+      if (resps[k].status !== 200) fail(`user 가입 실패: ${resps[k].status} ${resps[k].body}`);
+      userList[i + k].id = resps[k].json('data.id');
+    }
   }
   return { users: userList, productIds };
 }
