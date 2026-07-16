@@ -120,6 +120,54 @@ class RankingV1ApiE2ETest {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         }
 
+        @DisplayName("존재하지 않는 날짜이면 400을 반환한다.")
+        @Test
+        void returnsBadRequest_whenDateDoesNotExist() {
+            // act
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response =
+                    testRestTemplate.exchange(ENDPOINT + "?date=20260230", HttpMethod.GET, HttpEntity.EMPTY, type);
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+
+        @DisplayName("윤년이 아닌 해의 2월 29일이면 400을 반환한다.")
+        @Test
+        void returnsBadRequest_whenDateIsInvalidLeapDay() {
+            // act
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response =
+                    testRestTemplate.exchange(ENDPOINT + "?date=20250229", HttpMethod.GET, HttpEntity.EMPTY, type);
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+
+        @DisplayName("page가 음수이면 400을 반환한다.")
+        @Test
+        void returnsBadRequest_whenPageIsNegative() {
+            // act
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response =
+                    testRestTemplate.exchange(ENDPOINT + "?date=20260716&page=-1&size=20", HttpMethod.GET, HttpEntity.EMPTY, type);
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+
+        @DisplayName("size가 1보다 작으면 400을 반환한다.")
+        @Test
+        void returnsBadRequest_whenSizeIsLessThanOne() {
+            // act
+            ParameterizedTypeReference<ApiResponse<Void>> type = new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<Void>> response =
+                    testRestTemplate.exchange(ENDPOINT + "?date=20260716&page=0&size=0", HttpMethod.GET, HttpEntity.EMPTY, type);
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+
         @DisplayName("해당 일자의 랭킹 데이터가 없으면 404를 반환한다.")
         @Test
         void returnsNotFound_whenRankingDataDoesNotExist() {

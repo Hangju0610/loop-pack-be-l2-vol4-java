@@ -15,13 +15,15 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/v1/rankings")
 public class RankingV1Controller implements RankingV1ApiSpec {
 
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("uuuuMMdd")
+            .withResolverStyle(ResolverStyle.STRICT);
 
     private final ProductApplicationService productApplicationService;
 
@@ -32,6 +34,7 @@ public class RankingV1Controller implements RankingV1ApiSpec {
             @RequestParam(required = false, defaultValue = "20") int size
     ) {
         LocalDate targetDate = parseDate(date);
+        validatePageRequest(page, size);
         return ApiResponse.success(
                 PageResult.from(
                         productApplicationService.getRankedProducts(targetDate, PageRequest.of(page, size))
@@ -48,6 +51,15 @@ public class RankingV1Controller implements RankingV1ApiSpec {
             return LocalDate.parse(date, DATE_FORMAT);
         } catch (DateTimeParseException e) {
             throw new CoreException(ErrorType.BAD_REQUEST, "date 형식이 올바르지 않습니다: " + date);
+        }
+    }
+
+    private void validatePageRequest(int page, int size) {
+        if (page < 0) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "page는 0 이상이어야 합니다.");
+        }
+        if (size < 1) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "size는 1 이상이어야 합니다.");
         }
     }
 }
