@@ -1,0 +1,53 @@
+package com.loopers.interfaces.api.ranking;
+
+import com.loopers.application.product.ProductApplicationService;
+import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.PageResult;
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping("/api/v1/rankings")
+public class RankingV1Controller implements RankingV1ApiSpec {
+
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    private final ProductApplicationService productApplicationService;
+
+    @GetMapping
+    public ApiResponse<PageResult<RankingV1Dto.RankingItemResponse>> getRankings(
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size
+    ) {
+        LocalDate targetDate = parseDate(date);
+        return ApiResponse.success(
+                PageResult.from(
+                        productApplicationService.getRankedProducts(targetDate, PageRequest.of(page, size))
+                                .map(RankingV1Dto.RankingItemResponse::from)
+                )
+        );
+    }
+
+    private LocalDate parseDate(String date) {
+        if (date == null || date.isBlank()) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "date는 필수입니다.");
+        }
+        try {
+            return LocalDate.parse(date, DATE_FORMAT);
+        } catch (DateTimeParseException e) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "date 형식이 올바르지 않습니다: " + date);
+        }
+    }
+}
