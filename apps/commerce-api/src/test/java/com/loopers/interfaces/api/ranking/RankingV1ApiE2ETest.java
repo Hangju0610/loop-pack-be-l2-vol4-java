@@ -96,6 +96,71 @@ class RankingV1ApiE2ETest {
             assertThat(content.get(1).rank()).isEqualTo(2);
         }
 
+        @DisplayName("랭킹 상품은 score 내림차순으로 정렬되고 상품 정보가 함께 제공된다.")
+        @Test
+        void returnsRankedProductsWithAggregatedProductInformation_orderedByScoreDescending() {
+            // arrange
+            LocalDate date = LocalDate.of(2026, 7, 16);
+            BrandInfo nike = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            BrandInfo adidas = brandApplicationService.createBrand("아디다스", "러닝 브랜드");
+            ProductInfo lowerScoreProduct = productApplicationService.createProduct(nike.id(), "에어맥스", "운동화", 100_000L, 10);
+            ProductInfo higherScoreProduct = productApplicationService.createProduct(adidas.id(), "울트라부스트", "러닝화", 120_000L, 5);
+            seedRanking(date, lowerScoreProduct.id(), 0.6);
+            seedRanking(date, higherScoreProduct.id(), 0.7);
+
+            // act
+            ParameterizedTypeReference<ApiResponse<PageResult<RankingV1Dto.RankingItemResponse>>> type =
+                    new ParameterizedTypeReference<>() {};
+            ResponseEntity<ApiResponse<PageResult<RankingV1Dto.RankingItemResponse>>> response =
+                    testRestTemplate.exchange(
+                            ENDPOINT + "?date=20260716&page=0&size=20",
+                            HttpMethod.GET, HttpEntity.EMPTY, type
+                    );
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            List<RankingV1Dto.RankingItemResponse> content = response.getBody().data().content();
+            assertThat(content).hasSize(2);
+            assertThat(content.get(0))
+                    .extracting(
+                            RankingV1Dto.RankingItemResponse::rank,
+                            RankingV1Dto.RankingItemResponse::id,
+                            RankingV1Dto.RankingItemResponse::brandId,
+                            RankingV1Dto.RankingItemResponse::brandName,
+                            RankingV1Dto.RankingItemResponse::name,
+                            RankingV1Dto.RankingItemResponse::price,
+                            RankingV1Dto.RankingItemResponse::likeCount
+                    )
+                    .containsExactly(
+                            1L,
+                            higherScoreProduct.id(),
+                            adidas.id(),
+                            "아디다스",
+                            "울트라부스트",
+                            120_000L,
+                            0L
+                    );
+            assertThat(content.get(1))
+                    .extracting(
+                            RankingV1Dto.RankingItemResponse::rank,
+                            RankingV1Dto.RankingItemResponse::id,
+                            RankingV1Dto.RankingItemResponse::brandId,
+                            RankingV1Dto.RankingItemResponse::brandName,
+                            RankingV1Dto.RankingItemResponse::name,
+                            RankingV1Dto.RankingItemResponse::price,
+                            RankingV1Dto.RankingItemResponse::likeCount
+                    )
+                    .containsExactly(
+                            2L,
+                            lowerScoreProduct.id(),
+                            nike.id(),
+                            "나이키",
+                            "에어맥스",
+                            100_000L,
+                            0L
+                    );
+        }
+
         @DisplayName("date 파라미터가 없으면 400을 반환한다.")
         @Test
         void returnsBadRequest_whenDateIsMissing() {
