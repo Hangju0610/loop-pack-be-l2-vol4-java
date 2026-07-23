@@ -84,9 +84,11 @@ GET /api/v1/rankings?date=yyyyMMdd&period=DAILY|WEEKLY|MONTHLY&page=0&size=20
 
 ## 5. 배치 실행 예시 (수동 트리거, 이번 스코프)
 
+두 Job 모두 `requestDate`(yyyy-MM-dd, `LocalDate.parse` 가능한 형식) Job Parameter가 필수다. 누락 시 `dailyMetricReader`/`ProductRankMvUpsertWriter`/`ProductRankMvCleanupTasklet` 생성 단계에서 파싱 예외로 즉시 실패한다(§6.1 참고).
+
 ```shell
-./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankWeeklyJob'
-./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankMonthlyJob'
+./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankWeeklyJob --requestDate=2026-07-24'
+./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankMonthlyJob --requestDate=2026-07-24'
 ```
 
 ## 6. Spring Batch 구현 시 발견한 함정 (Slice 4, `ProductRankWeeklyJobConfig`)
