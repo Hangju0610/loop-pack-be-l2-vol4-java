@@ -50,6 +50,9 @@ commerce-api ── GET /rankings?period=DAILY   ──▶ Redis ZSET (기존, �
 | 15 | Ranking API 포트 구조 | **`domain/ranking` 패키지는 통합 유지, 포트만 분리** — `RankingRepository`(Redis ZSET, 일간), `ProductRankRepository`(RDB MV, 주간·월간). Application 레이어(`ProductApplicationService` 또는 `RankingFacade`)가 `period`로 라우팅 | Redis ZSET과 RDB MV는 조회 방식(score range vs SQL 페이징)이 근본적으로 달라 하나의 포트로 억지로 추상화하면 최소공배수 인터페이스가 됨. 다만 "랭킹"이라는 동일 관심사이므로 도메인 패키지 자체는 분리하지 않음 |
 | 16 | `product_metric_daily` PK | **복합 자연키 `(metric_date, product_id)`.** ULID 미사용, `BaseJpaEntity` 상속 안 함 | daily는 MV와 마찬가지로 컨슈머가 실시간 upsert하는 대상이며, 굳이 대리키(ULID)를 둘 필요가 없고 UNIQUE 제약을 PK로 승격시키면 별도 인덱스 비용도 줄어듦. `BaseJpaEntity` 상속 포기로 `createdAt/updatedAt`은 직접 관리하나, daily는 soft-delete 대상이 아니라 손실 크지 않음 |
 | 17 | `mv_product_rank_weekly/monthly` PK | **복합 자연키 `(as_of_date, product_id)`.** ULID 미사용 | MV는 도메인 엔티티가 아니라 배치 산출물(집계 결과)이므로 CLAUDE.md의 엔티티 ID 전략 대상이 아님. FK로 참조되지 않고 API 응답에도 노출되지 않아 ULID가 실질적으로 미사용 컬럼이 됨 |
+| 18 | `deleted_at` 필요 여부 | **`product_metric_daily`/`product_metric_summary` 둘 다 불필요.** `BaseJpaEntity` 미상속과 일관 | 이벤트로부터 파생되는 집계 데이터라 "메트릭 행을 삭제/복원한다"는 도메인 유스케이스 자체가 없음 |
+| 19 | `created_at`/`updated_at` 필요 여부 | **둘 다 추가.** `product_metric_summary`는 기존 스키마에 없었지만 이번에 추가 (Q17 "순수 리네임" 범위를 넘어서는 예외적 컬럼 추가) | `BaseJpaEntity`를 상속하지 않으므로 상속이 아닌 **엔티티 자체의 `@PrePersist`/`@PreUpdate`로 직접 관리**. daily에만 있고 summary에 없으면 "언제부터 이 상품 메트릭이 이상해졌는지" 감사·디버깅 시 비대칭적으로 불편해짐 |
+| 20 | 상품 삭제(`Product.delete()`, soft-delete) 시 메트릭 처리 | **cascade 삭제하지 않고 그대로 남김.** `product_metric_summary`/`daily`/MV는 상품이 삭제돼도 변경하지 않는다. 조회 시점(상품 상세, 랭킹)에 `Product`와 조인해 삭제 상태면 결과에서 제외(skip) | 기존 랭킹 도메인(`docs/domain/ranking/01-design.md`)이 이미 "ZSET 에는 있으나 DB 에서 결손된 상품은 skip" 정책을 채택 중이라 일관성을 유지. daily/MV는 "과거 시점에 실제로 발생한 사실"이므로 상품이 나중에 삭제됐다고 과거 스냅샷에서 지우면 히스토리가 왜곡됨. cascade 삭제를 하려면 컨슈머가 상품 삭제 이벤트까지 구독해야 해서 Q2/Q3에서 정한 "조회/좋아요/구매 이벤트만 처리"라는 컨슈머 책임 범위를 벗어남. 이로써 Q18("`deleted_at` 불필요")도 재확인됨 |
 
 ## 3. ERD / 클래스 다이어그램
 
@@ -74,6 +77,7 @@ GET /api/v1/rankings?date=yyyyMMdd&period=DAILY|WEEKLY|MONTHLY&page=0&size=20
 | `period` 값이 열거형 밖 | 400 BAD_REQUEST |
 | `DAILY`: 해당 일자 ZSET 미존재 | 404 NOT_FOUND (기존 정책 유지) |
 | `WEEKLY`/`MONTHLY`: 해당 `as_of_date` MV 스냅샷 미존재(배치 미실행) | 404 NOT_FOUND |
+| `WEEKLY`/`MONTHLY`: MV에는 있으나 조회 시점에 상품이 삭제됨 | 해당 항목만 결과에서 제외 (skip) — `DAILY`의 기존 skip 정책과 동일 (Q&A #20) |
 
 ## 5. 배치 실행 예시 (수동 트리거, 이번 스코프)
 

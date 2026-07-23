@@ -22,6 +22,8 @@ erDiagram
         bigint view_count "누적 조회수"
         bigint like_count "누적 좋아요 수"
         bigint purchase_count "누적 구매 수량"
+        datetime created_at "상품 생성(최초 insert) 시점"
+        datetime updated_at "마지막 이벤트 반영 시점"
     }
 
     mv_product_rank_weekly {
