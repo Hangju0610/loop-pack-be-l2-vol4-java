@@ -3,11 +3,7 @@ package com.loopers.interfaces.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.confg.kafka.KafkaConfig;
 import com.loopers.domain.handled.EventHandledRepository;
-import com.loopers.domain.metrics.ProductMetricDailyRepository;
-import com.loopers.domain.metrics.ProductMetricSummaryRepository;
-import com.loopers.domain.order.OrderSnapshot;
-import com.loopers.domain.order.OrderSnapshotItem;
-import com.loopers.domain.order.OrderSnapshotRepository;
+import com.loopers.domain.metrics.ProductMetricsService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,36 +24,28 @@ public class OrderEventsConsumer {
     private static final String CONSUMER_GROUP = "order-metrics-consumer";
     private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
 
-    private final ProductMetricSummaryRepository productMetricSummaryRepository;
-    private final ProductMetricDailyRepository productMetricDailyRepository;
+    private final ProductMetricsService productMetricsService;
     private final EventHandledRepository eventHandledRepository;
-    private final OrderSnapshotRepository orderSnapshotRepository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     @Autowired
     public OrderEventsConsumer(
-            ProductMetricSummaryRepository productMetricSummaryRepository,
-            ProductMetricDailyRepository productMetricDailyRepository,
+            ProductMetricsService productMetricsService,
             EventHandledRepository eventHandledRepository,
-            OrderSnapshotRepository orderSnapshotRepository,
             ObjectMapper objectMapper
     ) {
-        this(productMetricSummaryRepository, productMetricDailyRepository, eventHandledRepository, orderSnapshotRepository, objectMapper, Clock.system(ZONE_SEOUL));
+        this(productMetricsService, eventHandledRepository, objectMapper, Clock.system(ZONE_SEOUL));
     }
 
     OrderEventsConsumer(
-            ProductMetricSummaryRepository productMetricSummaryRepository,
-            ProductMetricDailyRepository productMetricDailyRepository,
+            ProductMetricsService productMetricsService,
             EventHandledRepository eventHandledRepository,
-            OrderSnapshotRepository orderSnapshotRepository,
             ObjectMapper objectMapper,
             Clock clock
     ) {
-        this.productMetricSummaryRepository = productMetricSummaryRepository;
-        this.productMetricDailyRepository = productMetricDailyRepository;
+        this.productMetricsService = productMetricsService;
         this.eventHandledRepository = eventHandledRepository;
-        this.orderSnapshotRepository = orderSnapshotRepository;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -98,18 +86,6 @@ public class OrderEventsConsumer {
             return;
         }
 
-        OrderSnapshot snapshot = orderSnapshotRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new IllegalStateException("주문 snapshot을 찾을 수 없습니다. orderId=" + orderId));
-
-        LocalDate today = LocalDate.now(clock);
-        for (OrderSnapshotItem item : snapshot.items()) {
-            if (item.productId() == null || item.quantity() == null) {
-                log.warn("상품 정보가 없는 주문 snapshot item 무시 [eventId={}, orderId={}]", payload.eventId(), orderId);
-                continue;
-            }
-
-            productMetricSummaryRepository.incrementPurchaseCount(item.productId(), item.quantity());
-            productMetricDailyRepository.incrementPurchaseQuantity(item.productId(), today, item.quantity());
-        }
+        productMetricsService.recordPurchase(payload.eventId(), orderId, LocalDate.now(clock));
     }
 }
