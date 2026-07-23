@@ -6,9 +6,14 @@ import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.test.JobLauncherTestUtils;
 import org.springframework.batch.test.context.SpringBatchTest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +49,9 @@ class ProductRankWeeklyJobE2ETest {
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
+
+    @Autowired
+    private JobRepository jobRepository;
 
     @AfterEach
     void tearDown() {
@@ -119,6 +127,59 @@ class ProductRankWeeklyJobE2ETest {
                 "SELECT view_sum FROM mv_product_rank_weekly WHERE as_of_date = ? AND product_id = ?",
                 Long.class, requestDate, "PRD_01");
         assertThat(viewSum).isEqualTo(10L);
+    }
+
+    @DisplayName("[Error Guessing] cleanup 완료 후 aggregate 단계에서 실패한 뒤 같은 requestDate로 재시작하면, cleanup이 다시 실행되고 전체가 처음부터 재집계된다.")
+    @Test
+    void rerunsCleanupAndFullyRecomputes_whenRestartedAfterAggregateStepFailure() throws Exception {
+        // arrange
+        // 다른 테스트와 같은 requestDate를 쓰면 Spring Batch 메타데이터(BATCH_JOB_INSTANCE 등)가
+        // DatabaseCleanUp 대상이 아니라서(JPA 엔티티가 아님) JobInstance가 충돌한다 — 이 테스트만의 날짜를 쓴다.
+        LocalDate requestDate = LocalDate.of(2026, 7, 30);
+        LocalDate yesterday = requestDate.minusDays(1);
+        insertDailyMetric("PRD_01", yesterday, 10, 5, 2);
+
+        JobParameters jobParameters = new JobParametersBuilder()
+                .addString("requestDate", requestDate.toString())
+                .toJobParameters();
+
+        // 이전 시도에서 aggregate 단계가 실패하기 전, cleanup 단계는 이미 COMPLETED로
+        // 기록되고 그 시점까지 write된 "부분 결과"가 남아있는 상황을 재현한다.
+        insertWeeklyMvRow(requestDate, "PRD_LEFTOVER", 999.0);
+        JobExecution failedExecution = jobRepository.createJobExecution(ProductRankWeeklyJobConfig.JOB_NAME, jobParameters);
+        StepExecution cleanupStepExecution = new StepExecution("productRankWeeklyCleanupStep", failedExecution);
+        jobRepository.add(cleanupStepExecution);
+        cleanupStepExecution.setStatus(BatchStatus.COMPLETED);
+        cleanupStepExecution.setExitStatus(ExitStatus.COMPLETED);
+        jobRepository.update(cleanupStepExecution);
+        failedExecution.setStatus(BatchStatus.FAILED);
+        failedExecution.setExitStatus(ExitStatus.FAILED);
+        jobRepository.update(failedExecution);
+
+        jobLauncherTestUtils.setJob(job);
+
+        // act — 같은 JobParameters로 재실행하면 Spring Batch는 기존 JobInstance의 재시작으로 처리한다.
+        JobExecution restartExecution = jobLauncherTestUtils.launchJob(jobParameters);
+
+        // assert
+        assertThat(restartExecution.getExitStatus().getExitCode()).isEqualTo(ExitStatus.COMPLETED.getExitCode());
+
+        Long leftoverCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mv_product_rank_weekly WHERE as_of_date = ? AND product_id = ?",
+                Long.class, requestDate, "PRD_LEFTOVER");
+        assertThat(leftoverCount).isEqualTo(0L);
+
+        Long viewSum = jdbcTemplate.queryForObject(
+                "SELECT view_sum FROM mv_product_rank_weekly WHERE as_of_date = ? AND product_id = ?",
+                Long.class, requestDate, "PRD_01");
+        assertThat(viewSum).isEqualTo(10L);
+    }
+
+    private void insertWeeklyMvRow(LocalDate asOfDate, String productId, double score) {
+        jdbcTemplate.update("""
+                INSERT INTO mv_product_rank_weekly (as_of_date, product_id, score, view_sum, like_delta_sum, purchase_quantity_sum, created_at)
+                VALUES (?, ?, ?, 0, 0, 0, ?)
+                """, asOfDate, productId, score, ZonedDateTime.now());
     }
 
     private void insertDailyMetric(String productId, LocalDate metricDate, long viewCount, long likeDeltaCount, long purchaseQuantity) {

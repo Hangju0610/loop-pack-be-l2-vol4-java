@@ -62,6 +62,10 @@ public class ProductRankWeeklyJobConfig {
         return new StepBuilder(CLEANUP_STEP_NAME, jobRepository)
                 .tasklet(productRankMvCleanupTasklet(null), transactionManager)
                 .listener(stepMonitorListener)
+                // 실패 후 같은 requestDate로 재시작하면 Spring Batch는 기본적으로 이미
+                // COMPLETED된 스텝을 건너뛴다. cleanup을 건너뛰면 "매번 처음부터 재계산"(#11)
+                // 전제가 깨지므로, 재시작 시에도 cleanup이 항상 다시 실행되도록 허용한다.
+                .allowStartIfComplete(true)
                 .build();
     }
 
@@ -89,10 +93,14 @@ public class ProductRankWeeklyJobConfig {
         return new JdbcCursorItemReaderBuilder<ProductMetricDailyRow>()
                 .name("productRankWeeklyDailyMetricReader")
                 .dataSource(dataSource)
+                // 재시작 시 이전 실행의 커서 위치(읽은 행 수)에서 이어받지 않고 항상 처음부터 다시
+                // 읽도록 체크포인트 저장을 끈다. cleanup(#11)과 짝을 이뤄 "매번 완전 재계산"을 보장한다.
+                .saveState(false)
                 .sql("""
                         SELECT product_id, metric_date, view_count, like_delta_count, purchase_quantity
                         FROM product_metric_daily
                         WHERE metric_date BETWEEN ? AND ?
+                        ORDER BY product_id
                         """)
                 .preparedStatementSetter(ps -> {
                     ps.setDate(1, Date.valueOf(windowStart));
