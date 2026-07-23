@@ -1,6 +1,7 @@
 package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.loopers.domain.metrics.ProductMetricDailyRepository;
 import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import com.loopers.infrastructure.EntityId;
 import com.loopers.testcontainers.MySqlTestContainersConfig;
@@ -15,6 +16,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -43,6 +45,9 @@ class CatalogEventsConsumerIntegrationTest {
 
     @Autowired
     private ProductMetricSummaryRepository productMetricSummaryRepository;
+
+    @Autowired
+    private ProductMetricDailyRepository productMetricDailyRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -137,6 +142,25 @@ class CatalogEventsConsumerIntegrationTest {
         // assert
         await().atMost(10, SECONDS).untilAsserted(() -> {
             long viewCount = productMetricSummaryRepository.findByProductId(productId)
+                    .map(m -> m.getViewCount()).orElse(0L);
+            assertEquals(1L, viewCount);
+        });
+    }
+
+    @DisplayName("[ECP] ProductViewedEvent 수신 시 product_metric_daily의 오늘자 view_count가 1 증가한다.")
+    @Test
+    void incrementsDailyViewCount_whenProductViewedEventReceived() throws Exception {
+        // arrange
+        String productId = EntityId.generate("PRD");
+        String payload = buildPayload(EntityId.generate("OBX"), "ProductViewedEvent",
+                Map.of("productId", productId, "userId", "USR_01"));
+
+        // act
+        kafkaTemplate.send(CATALOG_EVENTS_TOPIC, productId, payload);
+
+        // assert
+        await().atMost(10, SECONDS).untilAsserted(() -> {
+            long viewCount = productMetricDailyRepository.findByProductIdAndMetricDate(productId, LocalDate.now())
                     .map(m -> m.getViewCount()).orElse(0L);
             assertEquals(1L, viewCount);
         });

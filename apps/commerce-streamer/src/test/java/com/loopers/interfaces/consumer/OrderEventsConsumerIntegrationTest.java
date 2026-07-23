@@ -1,6 +1,7 @@
 package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.loopers.domain.metrics.ProductMetricDailyRepository;
 import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import com.loopers.infrastructure.EntityId;
 import com.loopers.testcontainers.MySqlTestContainersConfig;
@@ -16,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,6 +48,9 @@ class OrderEventsConsumerIntegrationTest {
 
     @Autowired
     private ProductMetricSummaryRepository productMetricSummaryRepository;
+
+    @Autowired
+    private ProductMetricDailyRepository productMetricDailyRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -125,6 +130,27 @@ class OrderEventsConsumerIntegrationTest {
         long purchaseCount = productMetricSummaryRepository.findByProductId(orderId)
                 .map(m -> m.getPurchaseCount()).orElse(0L);
         assertEquals(0L, purchaseCount);
+    }
+
+    @DisplayName("[ECP] PaymentCompleteEvent 수신 시 product_metric_daily의 오늘자 purchase_quantity가 수량만큼 증가한다.")
+    @Test
+    void incrementsDailyPurchaseQuantity_whenPaymentCompleteEventReceived() throws Exception {
+        // arrange
+        String orderId = EntityId.generate("ORD");
+        String productId = EntityId.generate("PRD");
+        insertOrder(orderId, productId, 4);
+        String payload = buildPayload(EntityId.generate("OBX"), "PaymentCompleteEvent",
+                Map.of("userId", "USR_01", "orderId", orderId));
+
+        // act
+        kafkaTemplate.send(ORDER_EVENTS_TOPIC, orderId, payload);
+
+        // assert
+        await().atMost(10, SECONDS).untilAsserted(() -> {
+            long purchaseQuantity = productMetricDailyRepository.findByProductIdAndMetricDate(productId, LocalDate.now())
+                    .map(m -> m.getPurchaseQuantity()).orElse(0L);
+            assertEquals(4L, purchaseQuantity);
+        });
     }
 
     private void insertOrder(String orderId, String productId, int quantity) throws Exception {
