@@ -1,5 +1,6 @@
 package com.loopers.interfaces.api.product;
 
+import com.loopers.application.product.ProductDetailInfo;
 import com.loopers.application.product.ProductInfo;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -52,9 +53,11 @@ public class ProductV1Dto {
         Long price,
         Long likeCount,
         Integer quantity,
-        String description
+        String description,
+        Long rank
     ) {
-        public static PdpResponse from(ProductInfo info) {
+        public static PdpResponse from(ProductDetailInfo detail) {
+            ProductInfo info = detail.product();
             return new PdpResponse(
                 info.id(),
                 info.brandId(),
@@ -63,7 +66,8 @@ public class ProductV1Dto {
                 info.price(),
                 info.likeCount(),
                 info.quantity(),
-                info.description()
+                info.description(),
+                detail.rank()
             );
         }
     }
@@ -104,9 +108,11 @@ public class ProductV1Dto {
         Integer quantity,
         String description,
         ZonedDateTime createdAt,
-        ZonedDateTime updatedAt
+        ZonedDateTime updatedAt,
+        Long rank
     ) {
-        public static AdminPdpResponse from(ProductInfo info) {
+        public static AdminPdpResponse from(ProductDetailInfo detail) {
+            ProductInfo info = detail.product();
             return new AdminPdpResponse(
                 info.id(),
                 info.brandId(),
@@ -117,7 +123,8 @@ public class ProductV1Dto {
                 info.quantity(),
                 info.description(),
                 info.createdAt(),
-                info.updatedAt()
+                info.updatedAt(),
+                detail.rank()
             );
         }
     }

@@ -13,18 +13,23 @@ import com.loopers.domain.outbox.OutboxEventRepository;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductViewedEvent;
+import com.loopers.domain.ranking.RankingItem;
+import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +54,7 @@ public class ProductApplicationService {
     private final ProductMetricsRepository productMetricsRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final RedisTemplate<String, String> redisTemplate;
+    private final RankingRepository rankingRepository;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -61,13 +67,14 @@ public class ProductApplicationService {
         return ProductInfo.from(product, brand, inventory, 0L);
     }
 
-    public ProductInfo getProduct(String id) {
-        return assembleProductInfo(findProductOrThrow(id));
+    public ProductDetailInfo getProduct(String id) {
+        ProductInfo product = assembleProductInfo(findProductOrThrow(id));
+        return new ProductDetailInfo(product, findTodayRank(id));
     }
 
     @Transactional
-    public ProductInfo getProductForCustomer(String id, String userId) {
-        ProductInfo product = getProduct(id);
+    public ProductDetailInfo getProductForCustomer(String id, String userId) {
+        ProductDetailInfo product = getProduct(id);
         ProductViewedEvent viewedEvent = new ProductViewedEvent(id, userId);
         outboxEventRepository.createAndSave(viewedEvent, CATALOG_EVENTS_TOPIC, UUID.randomUUID().toString());
         eventPublisher.publishEvent(viewedEvent);
@@ -79,6 +86,24 @@ public class ProductApplicationService {
             return getPage0WithCache(brandId, pageable);
         }
         return queryFromDb(brandId, pageable);
+    }
+
+    public Page<RankingInfo> getRankedProducts(LocalDate date, Pageable pageable) {
+        long total = rankingRepository.countByDate(date);
+        if (total == 0) {
+            throw new CoreException(ErrorType.NOT_FOUND, "[date = " + date + "] 랭킹 데이터를 찾을 수 없습니다.");
+        }
+
+        List<RankingItem> items = rankingRepository.findPage(date, pageable.getOffset(), pageable.getPageSize());
+        Map<String, ProductInfo> productInfoMap =
+                assembleProductInfoMap(items.stream().map(RankingItem::productId).toList());
+
+        List<RankingInfo> content = items.stream()
+                .filter(item -> productInfoMap.containsKey(item.productId()))
+                .map(item -> new RankingInfo(item.rank(), productInfoMap.get(item.productId())))
+                .toList();
+
+        return new PageImpl<>(content, pageable, total);
     }
 
     @Transactional
@@ -154,6 +179,31 @@ public class ProductApplicationService {
         });
     }
 
+    private Map<String, ProductInfo> assembleProductInfoMap(List<String> productIds) {
+        List<ProductEntity> products = productRepository.findAllByIds(productIds);
+
+        Map<String, BrandEntity> brandMap = brandRepository.findAllByIds(
+                        products.stream().map(ProductEntity::getBrandId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(BrandEntity::getId, Function.identity()));
+        Map<String, InventoryEntity> inventoryMap = inventoryRepository.findAllByProductIds(productIds).stream()
+                .collect(Collectors.toMap(InventoryEntity::getProductId, Function.identity()));
+        Map<String, Long> metricsMap = productMetricsRepository.findAllByProductIds(productIds).stream()
+                .collect(Collectors.toMap(ProductMetricsEntity::getProductId, ProductMetricsEntity::getLikeCount));
+
+        Map<String, ProductInfo> result = new HashMap<>();
+        for (ProductEntity product : products) {
+            BrandEntity brand = brandMap.get(product.getBrandId());
+            InventoryEntity inventory = inventoryMap.get(product.getId());
+            if (brand == null || inventory == null) {
+                continue;
+            }
+            long likeCount = metricsMap.getOrDefault(product.getId(), 0L);
+            result.put(product.getId(), ProductInfo.from(product, brand, inventory, likeCount));
+        }
+        return result;
+    }
+
     private String buildCacheKey(String brandId, Pageable pageable) {
         String brandPart = brandId != null ? brandId : "all";
         return CACHE_PREFIX + brandPart + "::" + pageable.getSort().toString();
@@ -168,6 +218,15 @@ public class ProductApplicationService {
                 .map(ProductMetricsEntity::getLikeCount)
                 .orElse(0L);
         return ProductInfo.from(product, brand, inventory, likeCount);
+    }
+
+    private Long findTodayRank(String productId) {
+        try {
+            return rankingRepository.findRank(LocalDate.now(), productId).orElse(null);
+        } catch (Exception e) {
+            log.warn("랭킹 조회 실패, rank=null로 degrade. productId={}", productId, e);
+            return null;
+        }
     }
 
     private ProductEntity findProductOrThrow(String id) {
