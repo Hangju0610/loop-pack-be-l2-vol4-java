@@ -54,6 +54,7 @@ commerce-api ── GET /rankings?period=DAILY   ──▶ Redis ZSET (기존, �
 | 19 | `created_at`/`updated_at` 필요 여부 | **둘 다 추가.** `product_metric_summary`는 기존 스키마에 없었지만 이번에 추가 (Q17 "순수 리네임" 범위를 넘어서는 예외적 컬럼 추가) | `BaseJpaEntity`를 상속하지 않으므로 상속이 아닌 **엔티티 자체의 `@PrePersist`/`@PreUpdate`로 직접 관리**. daily에만 있고 summary에 없으면 "언제부터 이 상품 메트릭이 이상해졌는지" 감사·디버깅 시 비대칭적으로 불편해짐 |
 | 20 | 상품 삭제(`Product.delete()`, soft-delete) 시 메트릭 처리 | **cascade 삭제하지 않고 그대로 남김.** `product_metric_summary`/`daily`/MV는 상품이 삭제돼도 변경하지 않는다. 조회 시점(상품 상세, 랭킹)에 `Product`와 조인해 삭제 상태면 결과에서 제외(skip) | 기존 랭킹 도메인(`docs/domain/ranking/01-design.md`)이 이미 "ZSET 에는 있으나 DB 에서 결손된 상품은 skip" 정책을 채택 중이라 일관성을 유지. daily/MV는 "과거 시점에 실제로 발생한 사실"이므로 상품이 나중에 삭제됐다고 과거 스냅샷에서 지우면 히스토리가 왜곡됨. cascade 삭제를 하려면 컨슈머가 상품 삭제 이벤트까지 구독해야 해서 Q2/Q3에서 정한 "조회/좋아요/구매 이벤트만 처리"라는 컨슈머 책임 범위를 벗어남. 이로써 Q18("`deleted_at` 불필요")도 재확인됨 |
 | 21 | `product_metric_summary`/`product_metric_daily` 실시간 증감 방식 | **원자적 upsert로 통일.** `INSERT ... ON DUPLICATE KEY UPDATE count = count + ?` (좋아요 감소는 `GREATEST(count - 1, 0)`으로 0 미만 방지). 컨슈머가 엔티티를 `findByProductId` 후 메모리에서 증감시켜 `save()`하는 read-modify-write 방식은 폐기 | 컨슈머가 여러 파티션/컨슈머 스레드에서 동시에 같은 상품을 갱신할 수 있어, read-modify-write는 두 트랜잭션이 같은 값을 읽고 각자 +1 한 뒤 저장하면 한쪽 증분이 유실되는 lost update(정합성 붕괴) 위험이 있다. `@Transactional`만으로는 MySQL 기본 격리수준(REPEATABLE READ)에서 이 레이스를 막지 못한다. daily(#2)·MV(#9)가 이미 원자적 upsert를 전제로 설계되어 있었으므로, summary만 다른 방식을 쓰는 것은 비일관적이었다. 원자적 upsert는 JPA 영속성 컨텍스트(`@PrePersist`/`@PreUpdate`)를 거치지 않으므로 `created_at`/`updated_at`도 SQL에서 직접 `NOW()`로 채운다. **트레이드오프**: 좋아요 하한(`GREATEST(...,0)`)·구매 수량 유효성(`amount <= 0` 무시) 같은 비즈니스 규칙이 도메인 객체가 아닌 네이티브 SQL·`RepositoryImpl`에 위치하게 된다. 원자성을 위해 의도적으로 감수한 것으로, 도메인 mutator를 되살리면 이 규칙은 다시 캡슐화되지만 lost update 버그가 재발한다 |
+| 22 | `commerce-api`의 `ProductRankRepositoryImpl`(MV 조회) 구현 방식 | **`JdbcTemplate` → Spring Data JPA로 전환.** `ProductRankWeeklyMvJpaRepository`/`ProductRankMonthlyMvJpaRepository` 두 개의 `JpaRepository<..., ProductRankMvId>`를 두고, `period`로 둘 중 하나에 위임한다. 임의의 `offset`(페이지 경계에 정렬되지 않은 값)을 `Pageable`로 표현하기 위해 `OffsetBasedPageRequest`(자체 구현 `Pageable`)를 사용한다 | 애초 `JdbcTemplate`을 택한 건 #21(원자적 upsert)의 네이티브 SQL 톤을 조회 경로까지 맞춘 것이었는데, #21의 진짜 근거는 "동시성 lost update 방지"였지 "읽기라서"가 아니었다. 이 MV 조회는 쓰기 경합이 없는 순수 읽기이므로 그 근거가 적용되지 않는다. 반면 `WEEKLY`/`MONTHLY`가 물리적으로 다른 두 테이블이라는 특성은 그대로 남아 있어, 단일 `JpaRepository`로 추상화하지 않고 테이블당 하나씩 두어 `period`로 분기하는 구조를 유지했다. 이 프로젝트의 기본 노선(`product`/`like` 등 대부분 도메인이 JPA 기반)과의 일관성을 우선했다 |
 
 ## 3. ERD / 클래스 다이어그램
 
@@ -87,7 +88,27 @@ GET /api/v1/rankings?date=yyyyMMdd&period=DAILY|WEEKLY|MONTHLY&page=0&size=20
 ./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankMonthlyJob'
 ```
 
-## 6. 후속 과제 (이번 스코프 밖)
+## 6. Spring Batch 구현 시 발견한 함정 (Slice 4, `ProductRankWeeklyJobConfig`)
+
+설계와 직접 관련은 없지만, 같은 실수를 반복하지 않도록 원인과 선택한 해결책을 남겨둔다.
+
+### 6.1 `requestDate` Job Parameter는 `String`으로 받고 `LocalDate.parse()`로 직접 변환한다
+
+**증상**: `@StepScope @Bean` 메서드 파라미터를 `@Value("#{jobParameters['requestDate']}") LocalDate requestDate`로 선언하면, 실제 Step 실행 시점에 `requestDate`가 `null`로 주입되어 `NullPointerException`이 발생했다. `LocalDate` 대신 `String`으로 받으면 값 자체는 들어오지만, `"2026-07-23"`이 아니라 `"26. 7. 23."`처럼 **JVM 기본 로케일(ko_KR) 종속 포맷**으로 변환되어 있어 `LocalDate.parse()`가 실패했다 (`DateTimeParseException`).
+
+**원인**: `#{jobParameters['requestDate']}`는 SpEL로 평가된 뒤, 대상 파라미터 타입에 맞춰 Spring의 `ConversionService`를 거쳐 변환된다. 이 변환 경로가 `JobParameters`에 저장된 원본 타입(`String`/`LocalDate` 등)과 대상 타입 조합에 따라 로케일 종속 `DateFormat`을 거치는 등 신뢰할 수 없게 동작한다는 것을 관찰했다 — 즉 "타입을 명시하면 자동으로 안전하게 바인딩될 것"이라는 기대가 깨진다.
+
+**결정**: `JobParametersBuilder`로 넣을 때도, `@Value`로 받을 때도 **항상 `String`으로 다루고, ISO-8601(`yyyy-MM-dd`) 포맷을 명시적으로 직접 `parse`/`toString`한다.** 이미 이 프로젝트의 `DemoTasklet`이 채택하고 있던 관례(`@Value("#{jobParameters['requestDate']}") private String requestDate;`)와 동일하며, 우연이 아니라 **동일한 함정을 피하기 위한 기존 선례**였던 것으로 보인다. 이 컨벤션을 그대로 따름으로써 로케일에 의존하지 않는 명시적 변환 지점을 코드에 남긴다.
+
+### 6.2 `@StepScope` Reader `@Bean` 메서드의 반환 타입은 구체 클래스로 선언한다
+
+**증상**: `dailyMetricReader()` 빈을 `ItemReader<ProductMetricDailyRow>` 인터페이스 타입으로 선언했더니, Step 실행 시 `org.springframework.batch.item.ReaderNotOpenException: Reader must be open before it can be read`가 발생했다.
+
+**원인**: `SimpleStepBuilder`(`.reader(...)`)는 전달된 reader가 `ItemStream`을 구현하는지 확인해 자동으로 Step의 스트림 생명주기(`open()`/`update()`/`close()`)에 등록한다. `@StepScope`는 `proxyMode = TARGET_CLASS`(CGLIB)로 프록시를 만드는데, 이 프록시가 어떤 인터페이스까지 노출하는지는 **Bean으로 등록된 정적 타입(=`@Bean` 메서드의 선언된 반환 타입)**의 영향을 받는다. 반환 타입을 `ItemReader<T>` 인터페이스로 선언하면 `JdbcCursorItemReader`가 실제로 구현하는 `ItemStream`이 프록시 계층에서 드러나지 않아, `.reader()`의 `instanceof ItemStream` 판정이 실패하고 `open()`이 한 번도 호출되지 않은 채 `read()`가 호출된다.
+
+**결정**: `@Bean` 메서드의 반환 타입을 실제 구현체 타입(`JdbcCursorItemReader<ProductMetricDailyRow>`)으로 선언한다. Spring Batch 커뮤니티에서도 잘 알려진 함정으로, StepScope로 감싸는 Reader/Writer/Processor `@Bean` 메서드는 인터페이스가 아니라 구체 타입을 반환하도록 하는 것이 안전하다. 이후 Slice(Monthly Job 등)에서도 이 패턴을 그대로 따른다.
+
+## 7. 후속 과제 (이번 스코프 밖)
 
 - 배치 매일 1회 실행을 위한 트리거(k8s CronJob 등) 및 배치 플랫폼 구성.
 - MV 스냅샷 보관 정책(retention) — 필요 시 오래된 `as_of_date` 행을 정리하는 별도 배치.

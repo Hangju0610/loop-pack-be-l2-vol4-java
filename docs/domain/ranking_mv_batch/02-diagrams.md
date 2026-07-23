@@ -243,8 +243,9 @@ classDiagram
         +countByAsOfDate(period, asOfDate) long
     }
     class ProductRankRepositoryImpl {
-        -JdbcTemplate jdbcTemplate
-        "SELECT ... FROM mv_product_rank_weekly|monthly WHERE as_of_date = ? ORDER BY score DESC LIMIT ? OFFSET ?"
+        -ProductRankWeeklyMvJpaRepository weeklyJpaRepository
+        -ProductRankMonthlyMvJpaRepository monthlyJpaRepository
+        "period로 두 JpaRepository 중 하나에 위임 (OffsetBasedPageRequest로 score DESC 페이지네이션)"
     }
 
     class RankingPeriod {

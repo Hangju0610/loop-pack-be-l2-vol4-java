@@ -14,6 +14,8 @@ import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.ProductViewedEvent;
 import com.loopers.domain.ranking.RankingItem;
+import com.loopers.domain.ranking.ProductRankRepository;
+import com.loopers.domain.ranking.RankingPeriod;
 import com.loopers.domain.ranking.RankingRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -55,6 +57,7 @@ public class ProductApplicationService {
     private final OutboxEventRepository outboxEventRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final RankingRepository rankingRepository;
+    private final ProductRankRepository productRankRepository;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -88,22 +91,35 @@ public class ProductApplicationService {
         return queryFromDb(brandId, pageable);
     }
 
-    public Page<RankingInfo> getRankedProducts(LocalDate date, Pageable pageable) {
-        long total = rankingRepository.countByDate(date);
-        if (total == 0) {
-            throw new CoreException(ErrorType.NOT_FOUND, "[date = " + date + "] 랭킹 데이터를 찾을 수 없습니다.");
+    public Page<RankingInfo> getRankedProducts(LocalDate date, RankingPeriod period, Pageable pageable) {
+        RankingPage rankingPage = resolveByPeriod(period, date, pageable);
+        if (rankingPage.total() == 0) {
+            throw new CoreException(ErrorType.NOT_FOUND, "[date = " + date + ", period = " + period + "] 랭킹 데이터를 찾을 수 없습니다.");
         }
 
-        List<RankingItem> items = rankingRepository.findPage(date, pageable.getOffset(), pageable.getPageSize());
         Map<String, ProductInfo> productInfoMap =
-                assembleProductInfoMap(items.stream().map(RankingItem::productId).toList());
+                assembleProductInfoMap(rankingPage.items().stream().map(RankingItem::productId).toList());
 
-        List<RankingInfo> content = items.stream()
+        List<RankingInfo> content = rankingPage.items().stream()
                 .filter(item -> productInfoMap.containsKey(item.productId()))
                 .map(item -> new RankingInfo(item.rank(), productInfoMap.get(item.productId())))
                 .toList();
 
-        return new PageImpl<>(content, pageable, total);
+        return new PageImpl<>(content, pageable, rankingPage.total());
+    }
+
+    private RankingPage resolveByPeriod(RankingPeriod period, LocalDate date, Pageable pageable) {
+        if (period == RankingPeriod.DAILY) {
+            long total = rankingRepository.countByDate(date);
+            List<RankingItem> items = rankingRepository.findPage(date, pageable.getOffset(), pageable.getPageSize());
+            return new RankingPage(items, total);
+        }
+        long total = productRankRepository.countByAsOfDate(period, date);
+        List<RankingItem> items = productRankRepository.findTopN(period, date, pageable.getPageSize(), pageable.getOffset());
+        return new RankingPage(items, total);
+    }
+
+    private record RankingPage(List<RankingItem> items, long total) {
     }
 
     @Transactional
