@@ -62,6 +62,12 @@ commerce-api ── GET /rankings?period=DAILY   ──▶ Redis ZSET (기존, �
 
 ERD와 클래스 다이어그램은 [`02-diagrams.md`](./02-diagrams.md) 로 분리했습니다.
 
+운영(dev/qa/prd) DB에 이 ERD를 반영하기 위한 DDL은 [`03-migration.sql`](./03-migration.sql) 참고.
+`ddl-auto: none`인 non-local 프로필에서는 이 스크립트를 각 환경 배포 프로세스에 맞게 실행해야
+스키마가 만들어진다 (코드 리뷰에서 지적된 "운영 DB 마이그레이션 부재" 갭에 대응. 이 프로젝트에는
+Flyway/Liquibase 같은 마이그레이션 도구가 없어, 자동화 없이 순수 SQL 스크립트로만 산출했다 — 실행
+자체는 여전히 운영자/배포 파이프라인의 책임이다).
+
 ## 4. API 명세 (확장)
 
 ```
