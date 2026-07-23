@@ -75,42 +75,47 @@ classDiagram
     }
 
     class ProductMetricSummaryEntity {
+        <<readonly DTO>>
         -String productId
         -long viewCount
         -long likeCount
         -long purchaseCount
-        +incrementViewCount()
-        +incrementLikeCount()
-        +decrementLikeCount()
-        +incrementPurchaseCount(quantity)
+        -ZonedDateTime createdAt
+        -ZonedDateTime updatedAt
     }
     class ProductMetricSummaryRepository {
         <<interface>>
+        "쓰기는 전부 원자적 upsert (Q&A #21)"
         +findByProductId(productId) Optional~ProductMetricSummaryEntity~
-        +save(entity) ProductMetricSummaryEntity
+        +incrementViewCount(productId)
+        +incrementLikeCount(productId)
+        +decrementLikeCount(productId)
+        +incrementPurchaseCount(productId, amount)
     }
     class ProductMetricSummaryRepositoryImpl {
         -ProductMetricSummaryJpaRepository jpaRepository
+        "INSERT ... ON DUPLICATE KEY UPDATE count = count + ? (좋아요 감소는 GREATEST(count-1,0))"
     }
 
-    class ProductMetricDailyEntity {
-        -ProductMetricDailyId id
-        -long viewCount
-        -long likeDeltaCount
-        -long purchaseQuantity
-        +incrementView()
-        +incrementLikeDelta()
-        +decrementLikeDelta()
-        +incrementPurchase(quantity)
-    }
     class ProductMetricDailyId {
         <<EmbeddedId>>
         -LocalDate metricDate
         -String productId
     }
+    class ProductMetricDailyEntity {
+        <<readonly DTO, 배치 Reader가 조회>>
+        -ProductMetricDailyId id
+        -long viewCount
+        -long likeDeltaCount
+        -long purchaseQuantity
+    }
     class ProductMetricDailyRepository {
         <<interface>>
-        +upsert(productId, date, viewDelta, likeDelta, purchaseDelta)
+        "쓰기는 전부 원자적 upsert (Q&A #21)"
+        +incrementViewCount(productId, date)
+        +incrementLikeDelta(productId, date)
+        +decrementLikeDelta(productId, date)
+        +incrementPurchaseQuantity(productId, date, amount)
     }
     class ProductMetricDailyRepositoryImpl {
         -ProductMetricDailyJpaRepository jpaRepository

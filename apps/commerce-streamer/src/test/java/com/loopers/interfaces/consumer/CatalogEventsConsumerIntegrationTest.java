@@ -1,7 +1,7 @@
 package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import com.loopers.infrastructure.EntityId;
 import com.loopers.testcontainers.MySqlTestContainersConfig;
 import com.loopers.testcontainers.RedisTestContainersConfig;
@@ -42,7 +42,7 @@ class CatalogEventsConsumerIntegrationTest {
     private KafkaTemplate<Object, Object> kafkaTemplate;
 
     @Autowired
-    private ProductMetricsRepository productMetricsRepository;
+    private ProductMetricSummaryRepository productMetricSummaryRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -68,7 +68,7 @@ class CatalogEventsConsumerIntegrationTest {
 
         // assert
         await().atMost(10, SECONDS).untilAsserted(() -> {
-            long likeCount = productMetricsRepository.findByProductId(productId)
+            long likeCount = productMetricSummaryRepository.findByProductId(productId)
                     .map(m -> m.getLikeCount())
                     .orElse(0L);
             assertEquals(1L, likeCount);
@@ -85,7 +85,7 @@ class CatalogEventsConsumerIntegrationTest {
         kafkaTemplate.send(CATALOG_EVENTS_TOPIC, productId, addPayload);
 
         await().atMost(10, SECONDS).untilAsserted(() ->
-                assertEquals(1L, productMetricsRepository.findByProductId(productId)
+                assertEquals(1L, productMetricSummaryRepository.findByProductId(productId)
                         .map(m -> m.getLikeCount()).orElse(0L))
         );
 
@@ -96,7 +96,7 @@ class CatalogEventsConsumerIntegrationTest {
 
         // assert
         await().atMost(10, SECONDS).untilAsserted(() -> {
-            long likeCount = productMetricsRepository.findByProductId(productId)
+            long likeCount = productMetricSummaryRepository.findByProductId(productId)
                     .map(m -> m.getLikeCount()).orElse(0L);
             assertEquals(0L, likeCount);
         });
@@ -117,7 +117,7 @@ class CatalogEventsConsumerIntegrationTest {
 
         // assert — 멱등 처리로 like_count는 1
         await().atMost(10, SECONDS).untilAsserted(() -> {
-            long likeCount = productMetricsRepository.findByProductId(productId)
+            long likeCount = productMetricSummaryRepository.findByProductId(productId)
                     .map(m -> m.getLikeCount()).orElse(0L);
             assertEquals(1L, likeCount);
         });
@@ -136,7 +136,7 @@ class CatalogEventsConsumerIntegrationTest {
 
         // assert
         await().atMost(10, SECONDS).untilAsserted(() -> {
-            long viewCount = productMetricsRepository.findByProductId(productId)
+            long viewCount = productMetricSummaryRepository.findByProductId(productId)
                     .map(m -> m.getViewCount()).orElse(0L);
             assertEquals(1L, viewCount);
         });

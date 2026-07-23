@@ -1,7 +1,7 @@
 package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import com.loopers.infrastructure.EntityId;
 import com.loopers.testcontainers.MySqlTestContainersConfig;
 import com.loopers.testcontainers.RedisTestContainersConfig;
@@ -45,7 +45,7 @@ class OrderEventsConsumerIntegrationTest {
     private KafkaTemplate<Object, Object> kafkaTemplate;
 
     @Autowired
-    private ProductMetricsRepository productMetricsRepository;
+    private ProductMetricSummaryRepository productMetricSummaryRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -77,9 +77,9 @@ class OrderEventsConsumerIntegrationTest {
 
         // assert
         await().atMost(10, SECONDS).untilAsserted(() -> {
-            long purchaseCount1 = productMetricsRepository.findByProductId(productId1)
+            long purchaseCount1 = productMetricSummaryRepository.findByProductId(productId1)
                     .map(m -> m.getPurchaseCount()).orElse(0L);
-            long purchaseCount2 = productMetricsRepository.findByProductId(productId2)
+            long purchaseCount2 = productMetricSummaryRepository.findByProductId(productId2)
                     .map(m -> m.getPurchaseCount()).orElse(0L);
             assertEquals(2L, purchaseCount1);
             assertEquals(3L, purchaseCount2);
@@ -103,7 +103,7 @@ class OrderEventsConsumerIntegrationTest {
 
         // assert — 멱등 처리로 purchase_count는 quantity만큼만 증가
         await().atMost(10, SECONDS).untilAsserted(() -> {
-            long purchaseCount = productMetricsRepository.findByProductId(productId)
+            long purchaseCount = productMetricSummaryRepository.findByProductId(productId)
                     .map(m -> m.getPurchaseCount()).orElse(0L);
             assertEquals(2L, purchaseCount);
         });
@@ -122,7 +122,7 @@ class OrderEventsConsumerIntegrationTest {
 
         // assert — 일정 시간 후에도 purchase_count = 0
         Thread.sleep(3000);
-        long purchaseCount = productMetricsRepository.findByProductId(orderId)
+        long purchaseCount = productMetricSummaryRepository.findByProductId(orderId)
                 .map(m -> m.getPurchaseCount()).orElse(0L);
         assertEquals(0L, purchaseCount);
     }

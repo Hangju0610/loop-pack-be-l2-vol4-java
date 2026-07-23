@@ -3,8 +3,7 @@ package com.loopers.interfaces.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.confg.kafka.KafkaConfig;
 import com.loopers.domain.handled.EventHandledRepository;
-import com.loopers.domain.metrics.ProductMetricsEntity;
-import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import com.loopers.domain.order.OrderSnapshot;
 import com.loopers.domain.order.OrderSnapshotItem;
 import com.loopers.domain.order.OrderSnapshotRepository;
@@ -24,7 +23,7 @@ import java.util.List;
 public class OrderEventsConsumer {
 
     private static final String CONSUMER_GROUP = "order-metrics-consumer";
-    private final ProductMetricsRepository productMetricsRepository;
+    private final ProductMetricSummaryRepository productMetricSummaryRepository;
     private final EventHandledRepository eventHandledRepository;
     private final OrderSnapshotRepository orderSnapshotRepository;
     private final ObjectMapper objectMapper;
@@ -74,10 +73,7 @@ public class OrderEventsConsumer {
                 continue;
             }
 
-            ProductMetricsEntity metrics = productMetricsRepository.findByProductId(item.productId())
-                    .orElseGet(() -> ProductMetricsEntity.create(item.productId()));
-            metrics.incrementPurchaseCount(item.quantity());
-            productMetricsRepository.save(metrics);
+            productMetricSummaryRepository.incrementPurchaseCount(item.productId(), item.quantity());
         }
     }
 }

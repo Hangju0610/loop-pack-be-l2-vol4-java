@@ -7,8 +7,8 @@ import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.inventory.InventoryEntity;
 import com.loopers.domain.inventory.InventoryRepository;
 import com.loopers.domain.like.LikeRepository;
-import com.loopers.domain.metrics.ProductMetricsEntity;
-import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.metrics.ProductMetricSummaryEntity;
+import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import com.loopers.domain.outbox.OutboxEventRepository;
 import com.loopers.domain.product.ProductEntity;
 import com.loopers.domain.product.ProductRepository;
@@ -51,7 +51,7 @@ public class ProductApplicationService {
     private final InventoryRepository inventoryRepository;
     private final LikeRepository likeRepository;
     private final ProductQueryRepository productQueryRepository;
-    private final ProductMetricsRepository productMetricsRepository;
+    private final ProductMetricSummaryRepository productMetricSummaryRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final RankingRepository rankingRepository;
@@ -166,8 +166,8 @@ public class ProductApplicationService {
                 .collect(Collectors.toMap(BrandEntity::getId, Function.identity()));
         Map<String, InventoryEntity> inventoryMap = inventoryRepository.findAllByProductIds(productIds).stream()
                 .collect(Collectors.toMap(InventoryEntity::getProductId, Function.identity()));
-        Map<String, Long> metricsMap = productMetricsRepository.findAllByProductIds(productIds).stream()
-                .collect(Collectors.toMap(ProductMetricsEntity::getProductId, ProductMetricsEntity::getLikeCount));
+        Map<String, Long> metricsMap = productMetricSummaryRepository.findAllByProductIds(productIds).stream()
+                .collect(Collectors.toMap(ProductMetricSummaryEntity::getProductId, ProductMetricSummaryEntity::getLikeCount));
 
         return products.map(product -> {
             BrandEntity brand = Optional.ofNullable(brandMap.get(product.getBrandId()))
@@ -188,8 +188,8 @@ public class ProductApplicationService {
                 .collect(Collectors.toMap(BrandEntity::getId, Function.identity()));
         Map<String, InventoryEntity> inventoryMap = inventoryRepository.findAllByProductIds(productIds).stream()
                 .collect(Collectors.toMap(InventoryEntity::getProductId, Function.identity()));
-        Map<String, Long> metricsMap = productMetricsRepository.findAllByProductIds(productIds).stream()
-                .collect(Collectors.toMap(ProductMetricsEntity::getProductId, ProductMetricsEntity::getLikeCount));
+        Map<String, Long> metricsMap = productMetricSummaryRepository.findAllByProductIds(productIds).stream()
+                .collect(Collectors.toMap(ProductMetricSummaryEntity::getProductId, ProductMetricSummaryEntity::getLikeCount));
 
         Map<String, ProductInfo> result = new HashMap<>();
         for (ProductEntity product : products) {
@@ -214,8 +214,8 @@ public class ProductApplicationService {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "브랜드를 찾을 수 없습니다."));
         InventoryEntity inventory = inventoryRepository.findByProductId(product.getId())
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "[productId = " + product.getId() + "] 재고를 찾을 수 없습니다."));
-        long likeCount = productMetricsRepository.findByProductId(product.getId())
-                .map(ProductMetricsEntity::getLikeCount)
+        long likeCount = productMetricSummaryRepository.findByProductId(product.getId())
+                .map(ProductMetricSummaryEntity::getLikeCount)
                 .orElse(0L);
         return ProductInfo.from(product, brand, inventory, likeCount);
     }

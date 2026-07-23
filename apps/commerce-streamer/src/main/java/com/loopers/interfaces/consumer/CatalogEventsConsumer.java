@@ -3,8 +3,7 @@ package com.loopers.interfaces.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.confg.kafka.KafkaConfig;
 import com.loopers.domain.handled.EventHandledRepository;
-import com.loopers.domain.metrics.ProductMetricsEntity;
-import com.loopers.domain.metrics.ProductMetricsRepository;
+import com.loopers.domain.metrics.ProductMetricSummaryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -21,7 +20,7 @@ import java.util.List;
 public class CatalogEventsConsumer {
 
     private static final String CONSUMER_GROUP = "catalog-metrics-consumer";
-    private final ProductMetricsRepository productMetricsRepository;
+    private final ProductMetricSummaryRepository productMetricSummaryRepository;
     private final EventHandledRepository eventHandledRepository;
     private final ObjectMapper objectMapper;
 
@@ -57,19 +56,11 @@ public class CatalogEventsConsumer {
             return;
         }
 
-        ProductMetricsEntity metrics = productMetricsRepository.findByProductId(productId)
-                .orElseGet(() -> ProductMetricsEntity.create(productId));
-
         switch (payload.eventType()) {
-            case "ProductViewedEvent" -> metrics.incrementViewCount();
-            case "LikeAddedEvent" -> metrics.incrementLikeCount();
-            case "LikeRemovedEvent" -> metrics.decrementLikeCount();
-            default -> {
-                log.warn("알 수 없는 catalog event 타입 무시 [eventType={}]", payload.eventType());
-                return;
-            }
+            case "ProductViewedEvent" -> productMetricSummaryRepository.incrementViewCount(productId);
+            case "LikeAddedEvent" -> productMetricSummaryRepository.incrementLikeCount(productId);
+            case "LikeRemovedEvent" -> productMetricSummaryRepository.decrementLikeCount(productId);
+            default -> log.warn("알 수 없는 catalog event 타입 무시 [eventType={}]", payload.eventType());
         }
-
-        productMetricsRepository.save(metrics);
     }
 }
