@@ -8,7 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface ProductMetricSummaryJpaRepository extends JpaRepository<ProductMetricSummaryJpaEntity, String> {
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """
@@ -20,7 +20,7 @@ public interface ProductMetricSummaryJpaRepository extends JpaRepository<Product
     )
     void incrementViewCount(@Param("productId") String productId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """
@@ -32,7 +32,7 @@ public interface ProductMetricSummaryJpaRepository extends JpaRepository<Product
     )
     void incrementLikeCount(@Param("productId") String productId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """
@@ -44,7 +44,7 @@ public interface ProductMetricSummaryJpaRepository extends JpaRepository<Product
     )
     void decrementLikeCount(@Param("productId") String productId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """

@@ -10,7 +10,7 @@ import java.time.LocalDate;
 
 public interface ProductMetricDailyJpaRepository extends JpaRepository<ProductMetricDailyJpaEntity, ProductMetricDailyId> {
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """
@@ -22,7 +22,7 @@ public interface ProductMetricDailyJpaRepository extends JpaRepository<ProductMe
     )
     void incrementViewCount(@Param("productId") String productId, @Param("metricDate") LocalDate metricDate);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """
@@ -34,7 +34,7 @@ public interface ProductMetricDailyJpaRepository extends JpaRepository<ProductMe
     )
     void incrementLikeDelta(@Param("productId") String productId, @Param("metricDate") LocalDate metricDate);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """
@@ -46,7 +46,7 @@ public interface ProductMetricDailyJpaRepository extends JpaRepository<ProductMe
     )
     void decrementLikeDelta(@Param("productId") String productId, @Param("metricDate") LocalDate metricDate);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Transactional
     @Query(
             value = """

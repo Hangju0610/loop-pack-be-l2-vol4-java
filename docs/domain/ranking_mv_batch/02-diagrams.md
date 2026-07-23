@@ -214,13 +214,13 @@ classDiagram
 classDiagram
     class RankingV1Controller {
         -ProductApplicationService productApplicationService
-        +getRankings(date, period, page, size) ApiResponse~List~RankingV1Dto~~
+        +getRankings(date, period, page, size) ApiResponse~PageResult~RankingV1Dto~~
     }
 
     class ProductApplicationService {
         -RankingRepository rankingRepository
         -ProductRankRepository productRankRepository
-        +getRankedProducts(date, period, pageable) List~RankingInfo~
+        +getRankedProducts(date, period, pageable) Page~RankingInfo~
         -resolveByPeriod(period, date, pageable)
     }
 
