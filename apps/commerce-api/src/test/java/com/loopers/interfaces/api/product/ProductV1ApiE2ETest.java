@@ -182,7 +182,10 @@ class ProductV1ApiE2ETest {
             ProductInfo noLike = createProduct(brand.id(), "에어맥스", 80_000L, 10);
             ProductInfo hasLike = createProduct(brand.id(), "에어포스", 150_000L, 5);
 
-            // like_count는 streamer가 product_metrics에 반영하므로 직접 시드
+            // like_count는 streamer가 product_metrics에 반영하므로 직접 시드.
+            // createProduct()가 이미 0으로 초기화된 summary 행을 만들어두므로, 새로 insert되도록 먼저 지운다
+            // (기존 행에 save()하면 JPA merge가 UPDATE 경로를 타 createdAt이 null로 덮어써진다).
+            productMetricSummaryJpaRepository.deleteById(hasLike.id());
             productMetricSummaryJpaRepository.save(new ProductMetricSummaryJpaEntity(hasLike.id(), 0L, 1L, 0L));
 
             // act
@@ -209,7 +212,10 @@ class ProductV1ApiE2ETest {
             ProductInfo noLike = createProduct(brand.id(), "에어맥스", 80_000L, 10);
             ProductInfo hasLike = createProduct(brand.id(), "에어포스", 150_000L, 5);
 
-            // like_count는 streamer가 product_metrics에 반영하므로 직접 시드
+            // like_count는 streamer가 product_metrics에 반영하므로 직접 시드.
+            // createProduct()가 이미 0으로 초기화된 summary 행을 만들어두므로, 새로 insert되도록 먼저 지운다
+            // (기존 행에 save()하면 JPA merge가 UPDATE 경로를 타 createdAt이 null로 덮어써진다).
+            productMetricSummaryJpaRepository.deleteById(hasLike.id());
             productMetricSummaryJpaRepository.save(new ProductMetricSummaryJpaEntity(hasLike.id(), 0L, 1L, 0L));
 
             // act

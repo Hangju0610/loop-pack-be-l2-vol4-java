@@ -68,6 +68,7 @@ public class ProductApplicationService {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "브랜드를 찾을 수 없습니다."));
         ProductEntity product = productRepository.save(new ProductEntity(brandId, name, description, price));
         InventoryEntity inventory = inventoryRepository.save(new InventoryEntity(product.getId(), quantity));
+        productMetricSummaryRepository.createInitial(product.getId());
         return ProductInfo.from(product, brand, inventory, 0L);
     }
 

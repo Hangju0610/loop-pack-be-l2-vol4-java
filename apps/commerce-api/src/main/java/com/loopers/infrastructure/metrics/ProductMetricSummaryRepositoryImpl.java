@@ -26,6 +26,11 @@ public class ProductMetricSummaryRepositoryImpl implements ProductMetricSummaryR
                 .toList();
     }
 
+    @Override
+    public void createInitial(String productId) {
+        jpaRepository.save(new ProductMetricSummaryJpaEntity(productId, 0, 0, 0));
+    }
+
     private ProductMetricSummaryEntity toDomain(ProductMetricSummaryJpaEntity e) {
         return ProductMetricSummaryEntity.of(
                 e.getProductId(), e.getViewCount(), e.getLikeCount(), e.getPurchaseCount(), e.getCreatedAt(), e.getUpdatedAt()
