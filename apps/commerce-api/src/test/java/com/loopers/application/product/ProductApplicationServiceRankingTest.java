@@ -178,5 +178,47 @@ class ProductApplicationServiceRankingTest {
                     () -> productApplicationService.getRankedProducts(LocalDate.of(2099, 1, 1), RankingPeriod.WEEKLY, PageRequest.of(0, 20)));
             assertEquals(ErrorType.NOT_FOUND, exception.getErrorType());
         }
+
+        @DisplayName("[Boundary] WEEKLY는 TOP 100까지만 노출되며, 100위 경계를 걸치는 페이지는 100위까지만 반환한다.")
+        @Test
+        void capsAtTop100_whenPageSpansThe100thRank() {
+            // arrange
+            LocalDate asOfDate = LocalDate.of(2026, 7, 23);
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            int totalProducts = 105;
+            for (int i = 1; i <= totalProducts; i++) {
+                ProductInfo product = productApplicationService.createProduct(brand.id(), "상품" + i, "설명", 10_000L, 10);
+                seedWeeklyMv(asOfDate, product.id(), totalProducts - i); // i가 작을수록 score가 높다(=순위가 높다)
+            }
+
+            // act — offset=90, size=30 → 91~120위를 요청하지만 100위까지만 존재
+            Page<RankingInfo> result = productApplicationService.getRankedProducts(asOfDate, RankingPeriod.WEEKLY, PageRequest.of(3, 30));
+
+            // assert
+            assertThat(result.getTotalElements()).isEqualTo(100L);
+            assertThat(result.getContent()).hasSize(10);
+            assertThat(result.getContent().get(0).rank()).isEqualTo(91);
+            assertThat(result.getContent().get(9).rank()).isEqualTo(100);
+        }
+
+        @DisplayName("[Boundary] WEEKLY에서 100위를 완전히 넘는 페이지를 요청하면 빈 목록을 반환한다(404 아님).")
+        @Test
+        void returnsEmptyContent_whenPageIsEntirelyBeyondTop100() {
+            // arrange
+            LocalDate asOfDate = LocalDate.of(2026, 7, 23);
+            BrandInfo brand = brandApplicationService.createBrand("나이키", "스포츠 브랜드");
+            int totalProducts = 105;
+            for (int i = 1; i <= totalProducts; i++) {
+                ProductInfo product = productApplicationService.createProduct(brand.id(), "상품" + i, "설명", 10_000L, 10);
+                seedWeeklyMv(asOfDate, product.id(), totalProducts - i);
+            }
+
+            // act — offset=100 → 101위부터 요청, 100위까지만 존재하므로 완전히 범위 밖
+            Page<RankingInfo> result = productApplicationService.getRankedProducts(asOfDate, RankingPeriod.WEEKLY, PageRequest.of(5, 20));
+
+            // assert
+            assertThat(result.getTotalElements()).isEqualTo(100L);
+            assertThat(result.getContent()).isEmpty();
+        }
     }
 }

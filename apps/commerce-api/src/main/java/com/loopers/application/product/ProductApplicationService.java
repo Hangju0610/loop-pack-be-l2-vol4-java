@@ -47,6 +47,7 @@ public class ProductApplicationService {
     private static final String CACHE_PREFIX = "products:list::";
     private static final Duration CACHE_TTL = Duration.ofMinutes(1);
     private static final String CATALOG_EVENTS_TOPIC = "catalog-events";
+    private static final long TOP_N_CAP = 100;
 
     private final ProductRepository productRepository;
     private final BrandRepository brandRepository;
@@ -114,8 +115,15 @@ public class ProductApplicationService {
             List<RankingItem> items = rankingRepository.findPage(date, pageable.getOffset(), pageable.getPageSize());
             return new RankingPage(items, total);
         }
-        long total = productRankRepository.countByAsOfDate(period, date);
-        List<RankingItem> items = productRankRepository.findTopN(period, date, pageable.getPageSize(), pageable.getOffset());
+
+        // WEEKLY/MONTHLY는 MV에 전체 상품 score가 저장되지만, API는 TOP 100까지만 노출한다 (Q&A #8).
+        long total = Math.min(productRankRepository.countByAsOfDate(period, date), TOP_N_CAP);
+        long offset = pageable.getOffset();
+        if (offset >= TOP_N_CAP) {
+            return new RankingPage(List.of(), total);
+        }
+        long cappedLimit = Math.min(pageable.getPageSize(), TOP_N_CAP - offset);
+        List<RankingItem> items = productRankRepository.findTopN(period, date, cappedLimit, offset);
         return new RankingPage(items, total);
     }
 
