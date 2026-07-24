@@ -8,8 +8,9 @@ import lombok.Getter;
 
 import java.time.ZonedDateTime;
 
-// 실제 조회는 ProductRankRepositoryImpl이 JdbcTemplate으로 수행한다 — 이 엔티티는
-// test 프로필 ddl-auto=create가 스키마를 생성하고 DatabaseCleanUp이 테이블을 인식하게 하기 위한 목적.
+// 실제 조회는 ProductRankRepositoryImpl이 이 엔티티를 통해 JPA로 수행한다.
+// 쓰기는 commerce-batch의 ProductRankMvUpsertWriter가 네이티브 upsert로 별도 수행하므로
+// 여기서는 세터를 노출하지 않는다.
 @Entity
 @Table(name = "mv_product_rank_weekly")
 @Getter
