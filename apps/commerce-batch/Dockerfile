@@ -33,5 +33,8 @@ ENV TZ=Asia/Seoul
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError"
 
 # requestDate 등 실행 시점에 결정되는 인자는 k8s CronJob의 command에서 채워 넣는다
-# (예: --requestDate=$(date +%F)). 로컬 실행 시에는 CMD 뒤에 직접 인자를 붙이면 된다.
+# (예: requestDate=$(date +%F)). Job Parameter는 "--" 없이 key=value로 넘겨야
+# Spring Boot의 getNonOptionArgs()에 잡힌다 — "--"를 붙이면 Spring Boot 옵션으로
+# 먼저 소비돼 jobParameters에서 빠진다(01-design.md #6.3). 로컬 실행 시에는 CMD 뒤에
+# 직접 인자를 붙이면 된다.
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar \"$@\"", "--"]

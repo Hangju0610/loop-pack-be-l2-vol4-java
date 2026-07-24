@@ -2,6 +2,11 @@
 # 두 Job 모두 "완결된 어제까지" 롤링 윈도우를 매일 재계산하는 구조라(#5) 스케줄은 동일하게
 # 매일 새벽 2시(KST)로 둔다. requestDate는 실행 당일 날짜를 그대로 넘긴다(#6.1 참고).
 #
+# 주의: requestDate는 "--" 없이 key=value 형식으로 넘겨야 Job Parameter로 인식된다.
+# "--requestDate=..."로 쓰면 Spring Boot가 옵션으로 먼저 소비해버려 jobParameters에서
+# 빠지고 NPE로 실패한다 (01-design.md #6.3 참고). spring.batch.job.name처럼 Spring
+# 프로퍼티인 것만 "--"를 쓴다.
+#
 # 적용: kubectl apply -f docker/k8s/productrank-cronjobs.yaml -n loopers
 # 사전 준비:
 #   - Secret loopers-mysql-credentials (MYSQL_USER, MYSQL_PWD)
@@ -71,7 +76,7 @@ spec:
               args:
                 - >-
                   exec java $JAVA_OPTS -jar app.jar
-                  --requestDate=$(date +%F)
+                  requestDate=$(date +%F)
               env:
                 - name: JOB_NAME
                   value: "productRankWeeklyJob"
@@ -130,7 +135,7 @@ spec:
               args:
                 - >-
                   exec java $JAVA_OPTS -jar app.jar
-                  --requestDate=$(date +%F)
+                  requestDate=$(date +%F)
               env:
                 - name: JOB_NAME
                   value: "productRankMonthlyJob"

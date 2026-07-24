@@ -102,9 +102,11 @@ GET /api/v1/rankings?date=yyyyMMdd&period=DAILY|WEEKLY|MONTHLY&page=0&size=20
 
 두 Job 모두 `requestDate`(yyyy-MM-dd, `LocalDate.parse` 가능한 형식) Job Parameter가 필수다. 누락 시 `dailyMetricReader`/`ProductRankMvUpsertWriter`/`ProductRankMvCleanupTasklet` 생성 단계에서 파싱 예외로 즉시 실패한다(§6.1 참고).
 
+`requestDate`는 **`--` 없이** `key=value` 형식으로 넘겨야 한다(§6.3 참고). `spring.batch.job.name`은 Spring Boot 프로퍼티라 `--`가 맞다.
+
 ```shell
-./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankWeeklyJob --requestDate=2026-07-24'
-./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankMonthlyJob --requestDate=2026-07-24'
+./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankWeeklyJob requestDate=2026-07-24'
+./gradlew :apps:commerce-batch:bootRun --args='--spring.batch.job.name=productRankMonthlyJob requestDate=2026-07-24'
 ```
 
 ## 6. Spring Batch 구현 시 발견한 함정 (Slice 4, `ProductRankWeeklyJobConfig`)
@@ -118,6 +120,16 @@ GET /api/v1/rankings?date=yyyyMMdd&period=DAILY|WEEKLY|MONTHLY&page=0&size=20
 **원인**: `#{jobParameters['requestDate']}`는 SpEL로 평가된 뒤, 대상 파라미터 타입에 맞춰 Spring의 `ConversionService`를 거쳐 변환된다. 이 변환 경로가 `JobParameters`에 저장된 원본 타입(`String`/`LocalDate` 등)과 대상 타입 조합에 따라 로케일 종속 `DateFormat`을 거치는 등 신뢰할 수 없게 동작한다는 것을 관찰했다 — 즉 "타입을 명시하면 자동으로 안전하게 바인딩될 것"이라는 기대가 깨진다.
 
 **결정**: `JobParametersBuilder`로 넣을 때도, `@Value`로 받을 때도 **항상 `String`으로 다루고, ISO-8601(`yyyy-MM-dd`) 포맷을 명시적으로 직접 `parse`/`toString`한다.** 이미 이 프로젝트의 `DemoTasklet`이 채택하고 있던 관례(`@Value("#{jobParameters['requestDate']}") private String requestDate;`)와 동일하며, 우연이 아니라 **동일한 함정을 피하기 위한 기존 선례**였던 것으로 보인다. 이 컨벤션을 그대로 따름으로써 로케일에 의존하지 않는 명시적 변환 지점을 코드에 남긴다.
+
+### 6.3 CLI에서 `requestDate`를 Job Parameter로 넘기려면 `--` 없이 `key=value` 형식이어야 한다
+
+**증상**(코드 리뷰(Codex)에서 지적, 검증 완료): §5의 실행 예시와 `docker/k8s/productrank-cronjobs.yaml`의 CronJob이 모두 `--requestDate=2026-07-24` 형식을 쓰고 있었는데, 이 형식으로 실행하면 `jobParameters['requestDate']`가 항상 `null`이 되어 `dailyMetricReader`/`ProductRankMvUpsertWriter`/`ProductRankMvCleanupTasklet` 생성 시점에 `LocalDate.parse(null)`이 `NullPointerException`을 던진다.
+
+**원인**: Spring Boot 3.4.4의 `JobLauncherApplicationRunner.run(ApplicationArguments)`는 `args.getNonOptionArgs()`만 꺼내 `StringUtils.splitArrayElementsIntoProperties(..., "=")`로 Job Parameter를 만든다(바이트코드로 직접 확인). `--`로 시작하는 인자는 Spring Boot의 `ApplicationArguments`가 먼저 "옵션"(프로퍼티 오버라이드 후보)으로 분류해가서 `getNonOptionArgs()`에 남지 않는다. 실제로 `DefaultApplicationArguments("--spring.batch.job.name=X", "--requestDate=2026-07-24")`를 만들어 확인하면 `getNonOptionArgs()`가 빈 리스트, `getOptionNames()`에 `requestDate`가 들어가 있다. 반면 `spring.batch.job.name`은 Spring 프로퍼티 자체(`@ConditionalOnProperty`가 Environment에서 읽음)이므로 `--`가 정확한 형식이다.
+
+**왜 테스트가 못 잡았는가**: `ProductRankWeeklyJobE2ETest`/`ProductRankMonthlyJobE2ETest`는 `JobParametersBuilder().addString("requestDate", ...).toJobParameters()`로 `JobParameters`를 프로그래밍적으로 직접 만들어 `jobLauncherTestUtils.launchJob()`에 넘긴다. 이 경로는 `JobLauncherApplicationRunner`의 CLI 인자 파싱(`getNonOptionArgs`)을 전혀 거치지 않으므로, 실제 실행 경로(`bootRun`/jar 실행/CronJob)에서만 발생하는 이 버그를 테스트가 원천적으로 검증할 수 없었다.
+
+**결정**: `requestDate`는 **`--` 없이** `requestDate=2026-07-24` 형식으로 넘긴다. `spring.batch.job.name`처럼 Spring 프로퍼티인 것만 `--`를 쓴다. §5의 실행 예시와 `docker/k8s/productrank-cronjobs.yaml`을 이 형식으로 수정했다.
 
 ### 6.2 `@StepScope` Reader `@Bean` 메서드의 반환 타입은 구체 클래스로 선언한다
 
