@@ -1,5 +1,6 @@
-package com.loopers.batch.job.productrank;
+package com.loopers.batch.job.productrank.step;
 
+import com.loopers.batch.job.productrank.ProductRankMvTable;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -12,17 +13,17 @@ public class ProductRankMvCleanupTasklet implements Tasklet {
 
     private final JdbcTemplate jdbcTemplate;
     private final LocalDate asOfDate;
-    private final String tableName;
+    private final ProductRankMvTable table;
 
-    public ProductRankMvCleanupTasklet(JdbcTemplate jdbcTemplate, LocalDate asOfDate, String tableName) {
+    public ProductRankMvCleanupTasklet(JdbcTemplate jdbcTemplate, LocalDate asOfDate, ProductRankMvTable table) {
         this.jdbcTemplate = jdbcTemplate;
         this.asOfDate = asOfDate;
-        this.tableName = tableName;
+        this.table = table;
     }
 
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-        jdbcTemplate.update("DELETE FROM %s WHERE as_of_date = ?".formatted(tableName), asOfDate);
+        jdbcTemplate.update("DELETE FROM %s WHERE as_of_date = ?".formatted(table.tableName()), asOfDate);
         return RepeatStatus.FINISHED;
     }
 }

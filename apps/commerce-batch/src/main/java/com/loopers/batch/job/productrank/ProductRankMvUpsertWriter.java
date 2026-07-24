@@ -11,12 +11,12 @@ public class ProductRankMvUpsertWriter implements ItemWriter<ProductRankScoreDel
 
     private final JdbcTemplate jdbcTemplate;
     private final LocalDate asOfDate;
-    private final String tableName;
+    private final ProductRankMvTable table;
 
-    public ProductRankMvUpsertWriter(JdbcTemplate jdbcTemplate, LocalDate asOfDate, String tableName) {
+    public ProductRankMvUpsertWriter(JdbcTemplate jdbcTemplate, LocalDate asOfDate, ProductRankMvTable table) {
         this.jdbcTemplate = jdbcTemplate;
         this.asOfDate = asOfDate;
-        this.tableName = tableName;
+        this.table = table;
     }
 
     @Override
@@ -29,7 +29,7 @@ public class ProductRankMvUpsertWriter implements ItemWriter<ProductRankScoreDel
                     view_sum = view_sum + VALUES(view_sum),
                     like_delta_sum = like_delta_sum + VALUES(like_delta_sum),
                     purchase_quantity_sum = purchase_quantity_sum + VALUES(purchase_quantity_sum)
-                """.formatted(tableName);
+                """.formatted(table.tableName());
 
         List<Object[]> batchArgs = chunk.getItems().stream()
                 .map(delta -> new Object[]{
