@@ -138,17 +138,32 @@ classDiagram
 classDiagram
     class ProductRankWeeklyJobConfig {
         +productRankWeeklyJob() Job
+        +productRankWeeklyCleanupStep() Step
         +productRankWeeklyStep() Step
-        +dailyMetricReader() ItemReader~ProductMetricDailyRow~
-        +weeklyScoreProcessor() ItemProcessor~ProductMetricDailyRow, ProductRankScoreDelta~
-        +mvWeeklyWriter() ItemWriter~ProductRankScoreDelta~
+        +dailyMetricReader(requestDate) JdbcCursorItemReader~ProductMetricDailyRow~
+        +productRankMvUpsertWriter(requestDate) ProductRankMvUpsertWriter
+        +productRankMvCleanupTasklet(requestDate) ProductRankMvCleanupTasklet
     }
     class ProductRankMonthlyJobConfig {
         +productRankMonthlyJob() Job
+        +productRankMonthlyCleanupStep() Step
         +productRankMonthlyStep() Step
-        +dailyMetricReader() ItemReader~ProductMetricDailyRow~
-        +monthlyScoreProcessor() ItemProcessor~ProductMetricDailyRow, ProductRankScoreDelta~
-        +mvMonthlyWriter() ItemWriter~ProductRankScoreDelta~
+        +dailyMetricReader(requestDate) JdbcCursorItemReader~ProductMetricDailyRow~
+        +productRankMvUpsertWriter(requestDate) ProductRankMvUpsertWriter
+        +productRankMvCleanupTasklet(requestDate) ProductRankMvCleanupTasklet
+    }
+    class ProductRankJobSupport {
+        <<static helper>>
+        "Weekly/Monthly가 공유하는 Step·Reader 조립 로직 (윈도우 일수·테이블만 파라미터로 다름)"
+        +cleanupStep(...) Step
+        +aggregateStep(...) Step
+        +dailyMetricReader(...) JdbcCursorItemReader~ProductMetricDailyRow~
+    }
+    class ProductRankMvTable {
+        <<enumeration>>
+        "SQL에 삽입되는 테이블명을 제한하기 위한 enum"
+        WEEKLY
+        MONTHLY
     }
 
     class ProductMetricDailyRow {
@@ -179,13 +194,15 @@ classDiagram
     class ProductRankMvUpsertWriter {
         -JdbcTemplate jdbcTemplate
         -LocalDate asOfDate
-        -String tableName
+        -ProductRankMvTable table
         +write(chunk~ProductRankScoreDelta~)
-        "INSERT ... ON DUPLICATE KEY UPDATE score = score + ?"
+        "INSERT ... ON DUPLICATE KEY UPDATE score = score + new_row.score (row-alias 문법)"
     }
 
     class ProductRankMvCleanupTasklet {
+        <<batch.job.productrank.step>>
         -JdbcTemplate jdbcTemplate
+        -ProductRankMvTable table
         +execute(contribution, chunkContext)
         "DELETE FROM mv_product_rank_* WHERE as_of_date = ?"
     }
@@ -194,12 +211,16 @@ classDiagram
     class StepMonitorListener
     class ChunkListener
 
+    ProductRankWeeklyJobConfig --> ProductRankJobSupport
     ProductRankWeeklyJobConfig --> ProductRankMvCleanupTasklet : beforeStep
     ProductRankWeeklyJobConfig --> ProductRankScoreProcessor
     ProductRankWeeklyJobConfig --> ProductRankMvUpsertWriter
+    ProductRankMonthlyJobConfig --> ProductRankJobSupport
     ProductRankMonthlyJobConfig --> ProductRankMvCleanupTasklet : beforeStep
     ProductRankMonthlyJobConfig --> ProductRankScoreProcessor
     ProductRankMonthlyJobConfig --> ProductRankMvUpsertWriter
+    ProductRankMvUpsertWriter --> ProductRankMvTable
+    ProductRankMvCleanupTasklet --> ProductRankMvTable
     ProductRankScoreProcessor --> ProductMetricDailyRow
     ProductRankScoreProcessor --> ProductRankScoreDelta
     ProductRankMvUpsertWriter --> ProductRankScoreDelta
