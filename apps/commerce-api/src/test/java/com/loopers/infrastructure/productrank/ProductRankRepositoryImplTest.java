@@ -83,6 +83,22 @@ class ProductRankRepositoryImplTest {
         );
     }
 
+    @DisplayName("[BVA] score가 동점이면 product_id 오름차순으로 순위가 결정된다.")
+    @Test
+    void breaksTieByProductIdAscending_whenScoresAreEqual() {
+        // arrange
+        LocalDate asOfDate = LocalDate.of(2026, 7, 23);
+        insertWeeklyMv(asOfDate, "PRD_B", 5.0);
+        insertWeeklyMv(asOfDate, "PRD_A", 5.0);
+        insertWeeklyMv(asOfDate, "PRD_C", 5.0);
+
+        // act
+        List<RankingItem> page = productRankRepository.findTopN(RankingPeriod.WEEKLY, asOfDate, 10, 0);
+
+        // assert
+        assertThat(page).extracting(RankingItem::productId).containsExactly("PRD_A", "PRD_B", "PRD_C");
+    }
+
     @DisplayName("[ECP] MONTHLY 기간은 mv_product_rank_monthly 테이블에서 별도로 조회된다.")
     @Test
     void queriesMonthlyTable_forMonthlyPeriod() {
