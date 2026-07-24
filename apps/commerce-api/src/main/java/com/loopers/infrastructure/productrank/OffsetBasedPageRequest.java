@@ -12,6 +12,12 @@ public class OffsetBasedPageRequest implements Pageable {
     private final Sort sort;
 
     public OffsetBasedPageRequest(long offset, int limit, Sort sort) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit은 1 이상이어야 합니다: " + limit);
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("offset은 0 이상이어야 합니다: " + offset);
+        }
         this.offset = offset;
         this.limit = limit;
         this.sort = sort;
