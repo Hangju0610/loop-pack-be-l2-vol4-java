@@ -21,14 +21,18 @@ public class ProductRankMvUpsertWriter implements ItemWriter<ProductRankScoreDel
 
     @Override
     public void write(Chunk<? extends ProductRankScoreDelta> chunk) {
+        // VALUES() 함수는 MySQL 8.0.20부터 deprecated이므로, 신규 행을 별칭(new_row)으로 참조하는
+        // row-alias 문법(8.0.19+)을 사용한다. 행 별칭의 컬럼명까지 원본과 다르게 지정해야
+        // "score = new_row.score" 같은 참조에서 컬럼명 충돌(ambiguous column)이 나지 않는다.
         String sql = """
                 INSERT INTO %s (as_of_date, product_id, score, view_sum, like_delta_sum, purchase_quantity_sum, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, NOW())
+                AS new_row (new_as_of_date, new_product_id, new_score, new_view_sum, new_like_delta_sum, new_purchase_quantity_sum, new_created_at)
                 ON DUPLICATE KEY UPDATE
-                    score = score + VALUES(score),
-                    view_sum = view_sum + VALUES(view_sum),
-                    like_delta_sum = like_delta_sum + VALUES(like_delta_sum),
-                    purchase_quantity_sum = purchase_quantity_sum + VALUES(purchase_quantity_sum)
+                    score = score + new_row.new_score,
+                    view_sum = view_sum + new_row.new_view_sum,
+                    like_delta_sum = like_delta_sum + new_row.new_like_delta_sum,
+                    purchase_quantity_sum = purchase_quantity_sum + new_row.new_purchase_quantity_sum
                 """.formatted(table.tableName());
 
         List<Object[]> batchArgs = chunk.getItems().stream()
